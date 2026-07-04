@@ -56,8 +56,10 @@ _UPSERT_SQL = {
     "technologies": """
         INSERT INTO technologies (name, field, sub_field, lead_ministry, trl_level,
                                   description, source_id)
-        SELECT name, field, sub_field, lead_ministry, trl_level, description, source_id
+        SELECT DISTINCT ON (name) name, field, sub_field, lead_ministry, trl_level,
+               description, source_id
         FROM staging.technologies WHERE source_id = %s
+        ORDER BY name, id DESC
         ON CONFLICT (name) DO UPDATE SET
             field = EXCLUDED.field, sub_field = EXCLUDED.sub_field,
             lead_ministry = EXCLUDED.lead_ministry, trl_level = EXCLUDED.trl_level,
@@ -66,17 +68,19 @@ _UPSERT_SQL = {
     """,
     "ministries": """
         INSERT INTO ministries (name, abbreviation, wiki_page_path, source_id)
-        SELECT name, abbreviation, wiki_page_path, source_id
+        SELECT DISTINCT ON (name) name, abbreviation, wiki_page_path, source_id
         FROM staging.ministries WHERE source_id = %s
+        ORDER BY name, id DESC
         ON CONFLICT (name) DO UPDATE SET
             abbreviation = EXCLUDED.abbreviation, source_id = EXCLUDED.source_id
     """,
     "projects": """
         INSERT INTO projects (project_code, name, lead_ministry, budget_total,
                               budget_annual, start_year, end_year, status, source_id)
-        SELECT project_code, name, lead_ministry, budget_total, budget_annual,
-               start_year, end_year, status, source_id
+        SELECT DISTINCT ON (project_code) project_code, name, lead_ministry, budget_total,
+               budget_annual, start_year, end_year, status, source_id
         FROM staging.projects WHERE source_id = %s AND project_code IS NOT NULL
+        ORDER BY project_code, id DESC
         ON CONFLICT (project_code) DO UPDATE SET
             name = EXCLUDED.name, lead_ministry = EXCLUDED.lead_ministry,
             budget_total = EXCLUDED.budget_total, budget_annual = EXCLUDED.budget_annual,

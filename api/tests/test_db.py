@@ -54,6 +54,47 @@ def test_upsert_staged_inserts_and_updates():
                          (source_id, source_id2))
 
 
+def test_upsert_staged_ministries_carries_source_id():
+    source_id = str(uuid.uuid4())
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO staging.ministries (name, abbreviation, source_id) VALUES (%s, %s, %s)",
+            ("업서트부처", "업부", source_id),
+        )
+    try:
+        counts = db.upsert_staged(source_id)
+        assert counts["ministries"] == 1
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT abbreviation, source_id FROM ministries WHERE name = %s", ("업서트부처",)
+            ).fetchone()
+        assert row["abbreviation"] == "업부"
+        assert row["source_id"] == source_id
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM ministries WHERE name = %s", ("업서트부처",))
+            conn.execute("DELETE FROM staging.ministries WHERE source_id = %s", (source_id,))
+
+
+def test_upsert_staged_dedupes_batch_duplicates():
+    source_id = str(uuid.uuid4())
+    _stage_tech(source_id, "중복기술", field="반도체")
+    _stage_tech(source_id, "중복기술", field="이차전지")  # 같은 배치에 동일 name 2행
+    try:
+        counts = db.upsert_staged(source_id)  # 자기충돌 없이 성공해야 함
+        assert counts["technologies"] == 1
+        with db.connect() as conn:
+            rows = conn.execute(
+                "SELECT field FROM technologies WHERE name = %s", ("중복기술",)
+            ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["field"] == "이차전지"  # id 큰(나중) 행 우선
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM technologies WHERE name = %s", ("중복기술",))
+            conn.execute("DELETE FROM staging.technologies WHERE source_id = %s", (source_id,))
+
+
 def test_discard_staged_clears():
     source_id = str(uuid.uuid4())
     _stage_tech(source_id, "폐기기술")
