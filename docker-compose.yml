@@ -1,15 +1,18 @@
 services:
   api:
     build: ./api
+    restart: unless-stopped
     ports: ["8000:8000"]              # NPM이 프록시할 포트
     environment:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - WIKI_REPO_PATH=/data/wiki
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-devkey}
     volumes:
       - wiki-data:/data/wiki
       - sources-data:/data/sources
+      - model-cache:/root/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -20,6 +23,8 @@ services:
 
   postgres:
     image: postgres:16
+    restart: unless-stopped
+    ports: ["127.0.0.1:5433:5432"]
     environment:
       - POSTGRES_DB=llm_wiki
       - POSTGRES_USER=wiki
@@ -35,14 +40,17 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
+    restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
 
 volumes:
   pg-data:
   qdrant-data:
   wiki-data:
   sources-data:
+  model-cache:
