@@ -63,12 +63,12 @@ async function openTask(taskId) {
     : "";
   const contradictions = (r.contradictions || []).map((c, i) => `
     <div class="contradiction">
-      <b>${c.summary ?? ""}</b> — ${c.page ?? ""}<br>기존: ${c.existing ?? ""} / 신규: ${c.new ?? ""}<br>
+      <b>${escapeHtml(String(c.summary ?? ""))}</b> — ${escapeHtml(String(c.page ?? ""))}<br>기존: ${escapeHtml(String(c.existing ?? ""))} / 신규: ${escapeHtml(String(c.new ?? ""))}<br>
       <label><input type="radio" name="res${i}" value="keep"> 기존 유지</label>
       <label><input type="radio" name="res${i}" value="replace" checked> 신규 채택</label>
       <label><input type="radio" name="res${i}" value="both"> 병기</label>
     </div>`).join("");
-  const suggestions = (r.suggestions || []).map(s => `<li>${s.path} (${s.action})</li>`).join("");
+  const suggestions = (r.suggestions || []).map(s => `<li>${escapeHtml(String(s.path))} (${escapeHtml(String(s.action))})</li>`).join("");
   const actions = r.status === "staged"
     ? `<p><button id="approve" onclick="act('approve')">승인</button>
        <button id="reject" onclick="act('reject')">거부</button></p>` : "";
