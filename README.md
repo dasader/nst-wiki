@@ -21,6 +21,7 @@ curl http://localhost:8000/health
 
 | 서비스 | 포트 | 역할 |
 |---|---|---|
+| frontend | 3000 | Next.js UI — 질의·위키 브라우저·데이터 탐색기 (NPM이 nst-wiki.mem.photos로 프록시) |
 | api | 8000 | FastAPI (NPM이 nst-wiki.mem.photos로 프록시) |
 | postgres | - | 정형 데이터 (public) + 승인 대기 (staging) |
 | qdrant | - | 벡터 검색 (Phase 4부터 사용) |
@@ -69,3 +70,11 @@ curl -X POST http://localhost:8000/api/v1/query -H "Content-Type: application/js
 ```bash
 cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --with google-genai --no-project python -m pytest tests -v
 ```
+
+## 웹 UI
+
+http://localhost:3000 — 자연어 질의(/), 위키 브라우저(/wiki), 데이터 탐색기(/data).
+승인 대시보드는 http://localhost:8000/ (admin key 필요).
+
+NPM 연동: `nst-wiki.mem.photos` → 호스트 3000 (UI). 승인 대시보드·API를 외부에서 쓰려면
+별도 서브도메인 또는 경로로 호스트 8000을 추가 프록시하고 Access List를 걸 것.
