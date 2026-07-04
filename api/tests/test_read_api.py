@@ -40,6 +40,14 @@ def test_wiki_search(tmp_path, monkeypatch):
     assert client.get("/api/v1/wiki/search", params={"q": ""}).status_code == 422
 
 
+def test_wiki_search_leading_dash_is_pattern(tmp_path, monkeypatch):
+    _wiki_with_page(tmp_path, monkeypatch)
+    # 옵션 주입 시도 — 패턴으로 취급되어 빈 결과(200)여야 하며, 옵션으로 해석되면 안 됨
+    r = client.get("/api/v1/wiki/search", params={"q": "-O"})
+    assert r.status_code == 200
+    assert r.json()["results"] == []
+
+
 def test_data_table_whitelist_and_query():
     assert client.get("/api/v1/data/ingest_tasks").status_code == 404  # 화이트리스트 밖
     assert client.get("/api/v1/data/technologies",

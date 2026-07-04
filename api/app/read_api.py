@@ -54,7 +54,8 @@ def wiki_page(path: str = Query(...)):
 @router.get("/wiki/search")
 def wiki_search(q: str = Query(..., min_length=1)):
     out = subprocess.run(
-        ["git", "-C", str(_root()), "grep", "-in", "--max-count=1", q, "main", "--", "*.md"],
+        # -e로 q를 패턴으로 강제 — q가 "-O" 등으로 시작해도 옵션(페이저 실행 계열)으로 해석되지 않게
+        ["git", "-C", str(_root()), "grep", "-in", "--max-count=1", "-e", q, "main", "--", "*.md"],
         capture_output=True, text=True,
     )
     results = []
