@@ -56,3 +56,30 @@ def test_compile_source_no_narrative(tmp_path, monkeypatch):
     assert out["branch"] is None
     assert out["affected_pages"] == []
     assert out["affected_tables"]["staged"][0]["rows"] == 2
+
+
+def test_compile_source_ignores_phantom_chunk_ids(tmp_path, monkeypatch):
+    wiki = tmp_path / "wiki"
+    init_wiki(wiki)
+    src = tmp_path / "src"
+    parsed = src / "parsed"
+    parsed.mkdir(parents=True)
+    (src / "metadata.json").write_text(json.dumps({"title": "문서"}), encoding="utf-8")
+    (parsed / "chunks.json").write_text(json.dumps([
+        {"id": "c001", "type": "text", "page": 1, "text": "정책 서사"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(compile_mod.classify, "classify_chunks",
+                        lambda p: {"narrative_ids": ["c001", "c999"], "table_ids": [], "picture_ids": []})
+    monkeypatch.setattr(compile_mod.describe, "describe_figures", lambda p, t: [])
+    monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
+                        lambda p, s: {"staged": [], "needs_review": 0})
+    received = {}
+    def fake_narrative(root, sid, meta, texts):
+        received["texts"] = texts
+        return {"files": {"tech/a.md": "본문"},
+                "affected_pages": [{"path": "tech/a.md", "action": "create"}],
+                "contradictions": []}
+    monkeypatch.setattr(compile_mod.narrative, "compile_narrative", fake_narrative)
+    out = compile_mod.compile_source(src, str(uuid.uuid4()), wiki)
+    assert received["texts"] == ["정책 서사"]  # c999는 조용히 무시
+    assert out["affected_pages"] == [{"path": "tech/a.md", "action": "create"}]

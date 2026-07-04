@@ -52,7 +52,8 @@ def rebuild_index(root: Path) -> str:
 def stage_changes(root: Path, source_id: str, files: dict[str, str], message: str) -> str:
     branch = f"ingest/{source_id}"
     with _lock(root):
-        _git(root, "checkout", "main")
+        _git(root, "checkout", "-f", "main")
+        _git(root, "clean", "-fd")
         _git(root, "checkout", "-B", branch)
         try:
             for rel, content in files.items():
@@ -65,5 +66,6 @@ def stage_changes(root: Path, source_id: str, files: dict[str, str], message: st
             _git(root, "add", "-A")
             _git(root, "commit", "-m", message)
         finally:
-            _git(root, "checkout", "main")
+            _git(root, "checkout", "-f", "main")
+            _git(root, "clean", "-fd")
     return branch

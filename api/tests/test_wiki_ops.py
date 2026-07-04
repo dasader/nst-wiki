@@ -62,3 +62,13 @@ def test_rebuild_index_lists_pages(tmp_path):
     (tmp_path / "tech" / "hbm.md").write_text("x", encoding="utf-8")
     idx = wiki_ops.rebuild_index(tmp_path)
     assert "tech/hbm" in idx
+
+
+def test_stage_changes_recovers_from_dirty_tree(tmp_path):
+    init_wiki(tmp_path)
+    # 이전 크래시가 남긴 미커밋 잔재를 흉내
+    (tmp_path / "tech" / "leftover.md").write_text("찌꺼기", encoding="utf-8")
+    wiki_ops.stage_changes(tmp_path, "s11", {"tech/d.md": "# D"}, "m")
+    tree = _git_out(tmp_path, "ls-tree", "-r", "--name-only", "ingest/s11")
+    assert "tech/leftover.md" not in tree
+    assert not (tmp_path / "tech" / "leftover.md").exists()
