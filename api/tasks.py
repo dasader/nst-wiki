@@ -27,3 +27,27 @@ def run_ingest(task_id: str) -> None:
     except Exception as e:
         db.set_status(task_id, "failed", error=str(e))
         raise
+
+
+@celery.task(name="embed.pages", time_limit=1800)
+def embed_pages(paths: list[str]) -> int:
+    import embeddings
+    import wiki_ops
+
+    root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+    client = embeddings.qdrant()
+    embeddings.ensure_collection(client)
+    n = 0
+    for p in paths:
+        text = wiki_ops.read_page(root, p)
+        if text is not None:
+            n += embeddings.index_page(client, p, text)
+    return n
+
+
+@celery.task(name="embed.reindex", time_limit=3600)
+def reindex_all() -> int:
+    import wiki_ops
+
+    root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+    return embed_pages(wiki_ops.list_pages(root))

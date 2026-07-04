@@ -79,6 +79,12 @@ def approve(task_id: str, body: ApproveBody | None = None):
                 _wiki_root(), task["source_id"],
                 f"approve: {task['source_id']}", resolutions=resolutions or None,
             )
+        pages = [p["path"] for p in (task["affected_pages"] or [])
+                 if p.get("action") in ("create", "update")]
+        if pages:
+            from tasks import embed_pages
+
+            embed_pages.delay(pages)
     except Exception:
         db.set_status(task_id, "staged")  # 클레임 되돌림 — 재시도 가능
         raise
@@ -95,6 +101,14 @@ def reject(task_id: str):
         db.set_status(task_id, "staged")
         raise
     return {"status": "rejected"}
+
+
+@router.post("/reindex", dependencies=[Depends(require_admin)])
+def reindex():
+    from tasks import reindex_all
+
+    reindex_all.delay()
+    return {"status": "queued"}
 
 
 @router.post("/ingest", dependencies=[Depends(require_admin)])

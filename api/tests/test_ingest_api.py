@@ -60,8 +60,10 @@ def test_ingest_happy_path_md(tmp_path, monkeypatch):
 
 def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
     from app import ingest_api
+    import tasks as tasks_mod
     # wiki_ops를 스텁으로: API 로직만 검증 (git 실동작은 test_wiki_ops가 검증)
     calls = {}
+    embed_calls = []
     monkeypatch.setattr(ingest_api.wiki_ops, "diff_branch", lambda r, s: "diff-텍스트")
     monkeypatch.setattr(ingest_api.wiki_ops, "approve_branch",
                         lambda r, s, m, resolutions=None: calls.setdefault("approve", resolutions))
@@ -69,6 +71,7 @@ def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest_api.db, "upsert_staged", lambda s: {"technologies": 1})
     monkeypatch.setattr(ingest_api.db, "discard_staged", lambda s: None)
     monkeypatch.setattr(ingest_api.db, "list_staged", lambda s: {"technologies": [], "needs_review": []})
+    monkeypatch.setattr(tasks_mod.embed_pages, "delay", lambda paths: embed_calls.append(paths))
 
     from app import db as real_db
     task_id, source_id = str(_uuid.uuid4()), str(_uuid.uuid4())
@@ -96,6 +99,7 @@ def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
         assert r.status_code == 200
         assert calls["approve"] == {"x-1": "keep"}
         assert real_db.get_task(task_id)["status"] == "approved"
+        assert embed_calls == [["tech/a.md"]]  # create만 enqueue, suggested는 제외
 
         # 이미 approved → 재승인 409
         r = client.post(f"/api/v1/ingest/{task_id}/approve", headers={"X-Admin-Key": "testkey"})
