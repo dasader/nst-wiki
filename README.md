@@ -57,5 +57,5 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 ## 테스트
 
 ```bash
-cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --no-project python -m pytest tests -v
+cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --with google-genai --no-project python -m pytest tests -v
 ```

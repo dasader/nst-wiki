@@ -52,43 +52,48 @@ def review(task_id: str):
     }
 
 
-def _reviewable(task_id: str) -> dict:
+def _claim(task_id: str, new_status: str) -> dict:
+    """staged → new_status로 원자적 전이. 동시 요청은 한쪽만 성공(나머지 409)."""
     task = db.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    if task["status"] != "staged":
-        raise HTTPException(status_code=409, detail=f"not staged (status: {task['status']})")
+    with db.connect() as conn:
+        cur = conn.execute(
+            "UPDATE ingest_tasks SET status=%s, reviewed_at=%s "
+            "WHERE task_id=%s AND status='staged'",
+            (new_status, datetime.now(timezone.utc), task_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=409, detail=f"not staged (status: {task['status']})")
     return task
 
 
 @router.post("/ingest/{task_id}/approve", dependencies=[Depends(require_admin)])
 def approve(task_id: str, body: ApproveBody | None = None):
-    task = _reviewable(task_id)
-    counts = db.upsert_staged(task["source_id"])
-    if task["branch_name"]:
-        resolutions = body.contradiction_resolutions if body else {}
-        wiki_ops.approve_branch(
-            _wiki_root(), task["source_id"],
-            f"approve: {task['source_id']}", resolutions=resolutions or None,
-        )
-    with db.connect() as conn:
-        conn.execute(
-            "UPDATE ingest_tasks SET status='approved', reviewed_at=%s WHERE task_id=%s",
-            (datetime.now(timezone.utc), task_id),
-        )
+    task = _claim(task_id, "approved")
+    try:
+        counts = db.upsert_staged(task["source_id"])
+        if task["branch_name"]:
+            resolutions = body.contradiction_resolutions if body else {}
+            wiki_ops.approve_branch(
+                _wiki_root(), task["source_id"],
+                f"approve: {task['source_id']}", resolutions=resolutions or None,
+            )
+    except Exception:
+        db.set_status(task_id, "staged")  # 클레임 되돌림 — 재시도 가능
+        raise
     return {"status": "approved", "upserted": counts}
 
 
 @router.post("/ingest/{task_id}/reject", dependencies=[Depends(require_admin)])
 def reject(task_id: str):
-    task = _reviewable(task_id)
-    db.discard_staged(task["source_id"])
-    wiki_ops.reject_branch(_wiki_root(), task["source_id"])
-    with db.connect() as conn:
-        conn.execute(
-            "UPDATE ingest_tasks SET status='rejected', reviewed_at=%s WHERE task_id=%s",
-            (datetime.now(timezone.utc), task_id),
-        )
+    task = _claim(task_id, "rejected")
+    try:
+        db.discard_staged(task["source_id"])
+        wiki_ops.reject_branch(_wiki_root(), task["source_id"])
+    except Exception:
+        db.set_status(task_id, "staged")
+        raise
     return {"status": "rejected"}
 
 

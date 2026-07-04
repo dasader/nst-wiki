@@ -85,7 +85,7 @@ function htmlTable(rows) {
   if (!rows.length) return "";
   const cols = Object.keys(rows[0]);
   return `<table><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr>` +
-    rows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(String(r[c] ?? ""))}</td>`).join("")}</tr>`).join("") +
+    rows.map(r => `<tr>${cols.map(c => { const v = r[c]; const s = v !== null && typeof v === "object" ? JSON.stringify(v) : String(v ?? ""); return `<td>${escapeHtml(s)}</td>`; }).join("")}</tr>`).join("") +
     "</table>";
 }
 
@@ -94,20 +94,25 @@ function escapeHtml(s) {
 }
 
 async function act(action) {
-  const body = { contradiction_resolutions: {} };
-  // 모순 ID 규약은 log.md와 동일: {source_id 앞 8자}-{순번} (narrative.py가 기록하는 형식)
-  document.querySelectorAll(".contradiction").forEach((el, i) => {
-    const v = el.querySelector("input:checked");
-    if (v) body.contradiction_resolutions[`${currentSource8}-${i + 1}`] = v.value;
-  });
-  const res = await fetch(`/api/v1/ingest/${current}/${action}`, {
-    method: "POST",
-    headers: { "X-Admin-Key": keyInput.value, "Content-Type": "application/json" },
-    body: action === "approve" ? JSON.stringify(body) : null,
-  });
-  alert(action + ": " + res.status + " " + (await res.text()).slice(0, 300));
-  await loadList();
-  if (res.ok) openTask(current);
+  document.querySelectorAll("#approve, #reject").forEach(b => b.disabled = true);
+  try {
+    const body = { contradiction_resolutions: {} };
+    // 모순 ID 규약은 log.md와 동일: {source_id 앞 8자}-{순번} (narrative.py가 기록하는 형식)
+    document.querySelectorAll(".contradiction").forEach((el, i) => {
+      const v = el.querySelector("input:checked");
+      if (v) body.contradiction_resolutions[`${currentSource8}-${i + 1}`] = v.value;
+    });
+    const res = await fetch(`/api/v1/ingest/${current}/${action}`, {
+      method: "POST",
+      headers: { "X-Admin-Key": keyInput.value, "Content-Type": "application/json" },
+      body: action === "approve" ? JSON.stringify(body) : null,
+    });
+    alert(action + ": " + res.status + " " + (await res.text()).slice(0, 300));
+    await loadList();
+    if (res.ok) openTask(current);
+  } finally {
+    document.querySelectorAll("#approve, #reject").forEach(b => b.disabled = false);
+  }
 }
 
 loadList();

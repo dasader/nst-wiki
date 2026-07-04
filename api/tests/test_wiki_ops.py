@@ -106,3 +106,8 @@ def test_reject_deletes_branch(tmp_path):
     assert "ingest/s22" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
     assert not (tmp_path / "tech" / "y.md").exists()
     wiki_ops.reject_branch(tmp_path, "s22")  # 멱등: 없는 브랜치도 에러 없이
+
+
+def test_approve_branch_idempotent_when_branch_missing(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.approve_branch(tmp_path, "sX", "approve: 없음")  # 브랜치 없음 — 예외 없이 리턴

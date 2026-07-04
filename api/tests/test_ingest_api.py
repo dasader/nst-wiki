@@ -112,3 +112,27 @@ def test_list_tasks_endpoint():
     r = client.get("/api/v1/ingest")
     assert r.status_code == 200
     assert "tasks" in r.json()
+
+
+def test_approve_reverts_to_staged_on_wiki_failure(monkeypatch):
+    from app import ingest_api
+    from app import db as real_db
+    monkeypatch.setattr(ingest_api.db, "upsert_staged", lambda s: {})
+    def boom(*a, **k):
+        raise RuntimeError("wiki 실패")
+    monkeypatch.setattr(ingest_api.wiki_ops, "approve_branch", boom)
+    task_id, source_id = str(_uuid.uuid4()), str(_uuid.uuid4())
+    real_db.create_task(task_id, source_id)
+    try:
+        with real_db.connect() as conn:
+            conn.execute(
+                "UPDATE ingest_tasks SET status='staged', branch_name=%s WHERE task_id=%s",
+                (f"ingest/{source_id}", task_id),
+            )
+        local_client = TestClient(app, raise_server_exceptions=False)
+        r = local_client.post(f"/api/v1/ingest/{task_id}/approve",
+                              headers={"X-Admin-Key": "testkey"})
+        assert r.status_code == 500
+        assert real_db.get_task(task_id)["status"] == "staged"  # 되돌려짐 — 재시도 가능
+    finally:
+        real_db.delete_task(task_id)

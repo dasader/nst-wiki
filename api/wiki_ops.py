@@ -90,6 +90,8 @@ def approve_branch(root: Path, source_id: str, message: str,
                    resolutions: dict[str, str] | None = None) -> None:
     branch = f"ingest/{source_id}"
     with _lock(root):
+        if not _branch_exists(root, branch):
+            return  # 이미 병합·삭제된 브랜치 — 재시도 멱등
         _git(root, "checkout", "-f", "main")
         _git(root, "clean", "-fd")
         _git(root, "merge", "--squash", branch)
