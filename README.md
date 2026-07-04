@@ -28,7 +28,9 @@ curl http://localhost:8000/health
 
 볼륨: `wiki-data`(위키 git 저장소), `sources-data`(원본 문서), `pg-data`, `qdrant-data`
 
-DB 스키마는 `db/init/*.sql`로만 변경한다 (LLM DDL 금지 — 설계서 원칙 5).
+DB 스키마는 `db/init/NNN_*.sql` 넘버링 파일로만 변경한다 (LLM DDL 금지 — 설계서 원칙 5).
+새 볼륨은 initdb가 순서대로 적용하고, 기존 볼륨에는 수동 적용한다:
+`docker compose exec postgres psql -U wiki -d llm_wiki -f /docker-entrypoint-initdb.d/NNN_*.sql`
 
 ## 문서 인제스트
 
