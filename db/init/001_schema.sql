@@ -82,8 +82,8 @@ CREATE TABLE staging_tables (
 CREATE TABLE ingest_tasks (
     task_id VARCHAR(100) PRIMARY KEY,
     source_id VARCHAR(100) NOT NULL,
-    status VARCHAR(30) NOT NULL,       -- queued/parsing/classifying/staged/
-                                       -- approved/rejected/failed
+    status VARCHAR(30) NOT NULL,       -- queued/parsing/parsed/classifying/
+                                       -- staged/approved/rejected/failed
     branch_name VARCHAR(200),
     affected_pages JSONB,              -- 갱신된 페이지 + 갱신 제안 목록
     affected_tables JSONB,
