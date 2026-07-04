@@ -9,10 +9,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - WIKI_REPO_PATH=/data/wiki
       - ADMIN_API_KEY=${ADMIN_API_KEY:-devkey}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - wiki-data:/data/wiki
       - sources-data:/data/sources
-      - model-cache:/root/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,6 +29,7 @@ services:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
       - REDIS_URL=redis://redis:6379/0
       - WIKI_REPO_PATH=/data/wiki
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - wiki-data:/data/wiki
       - sources-data:/data/sources

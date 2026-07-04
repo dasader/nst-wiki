@@ -1,0 +1,8 @@
+{
+  "default": {"model": "gemini-3.1-flash-lite", "thinking_level": "high"},
+  "classify": {},
+  "describe_figure": {},
+  "map_table": {},
+  "plan_pages": {},
+  "merge_page": {}
+}
