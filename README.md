@@ -51,7 +51,7 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 표는 PostgreSQL `staging` 스키마에 적재한다 (status: `staged`).
 
 **승인 대시보드**: http://localhost:8000/ — staged 태스크의 위키 diff·staging 데이터·모순을
-검토하고 승인(위키 main 병합 + DB 반영) 또는 거부한다. 벡터 검색·질의는 Phase 4.
+검토하고 승인(위키 main 병합 + DB 반영) 또는 거부한다. 자연어 질의는 아래 참조.
 `.env`에 `GEMINI_API_KEY` 필수.
 
 ## 자연어 질의

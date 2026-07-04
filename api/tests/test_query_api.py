@@ -50,6 +50,49 @@ def test_query_data_mode_explicit(monkeypatch):
     assert body["sql_rows"] == [{"c": 1}]
 
 
+def test_query_citations_filtered_to_used_paths(monkeypatch):
+    from app import query_api
+    def fake(purpose, contents, schema=None):
+        if purpose == "synthesize":
+            return "답변입니다 [tech/a.md]"
+        raise AssertionError(purpose)
+    monkeypatch.setattr(query_api.llm, "generate", fake)
+    monkeypatch.setattr(query_api.search, "search_wiki", lambda q, limit=5: [
+        {"path": "tech/a.md", "text": "본문", "score": 0.9},
+        {"path": "tech/b.md", "text": "다른", "score": 0.5},
+        {"path": "tech/a.md", "text": "본문2", "score": 0.4},
+    ])
+    r = client.post("/api/v1/query", json={"question": "q", "mode": "narrative"})
+    assert r.json()["citations"] == [{"path": "tech/a.md"}]  # 사용된 것만, 중복 제거
+
+
+def test_query_hybrid_with_sql_error(monkeypatch):
+    from app import query_api
+    captured = {}
+    def fake(purpose, contents, schema=None):
+        if purpose == "route_query":
+            return {"mode": "hybrid"}
+        if purpose == "synthesize":
+            captured["context"] = contents
+            return "합성"
+        raise AssertionError(purpose)
+    monkeypatch.setattr(query_api.llm, "generate", fake)
+    monkeypatch.setattr(query_api.search, "search_wiki",
+                        lambda q, limit=5: [{"path": "tech/a.md", "text": "본문", "score": 0.9}])
+    monkeypatch.setattr(query_api.text2sql, "run_data_query",
+                        lambda q: {"sql": "SELECT bad", "rows": [], "error": "syntax error"})
+    r = client.post("/api/v1/query", json={"question": "q"})
+    body = r.json()
+    assert body["mode"] == "hybrid"
+    assert body["sql_error"] == "syntax error"
+    assert "오류: syntax error" in captured["context"]
+    assert "tech/a.md" in captured["context"]
+
+
+def test_query_invalid_mode_422():
+    assert client.post("/api/v1/query", json={"question": "q", "mode": "foo"}).status_code == 422
+
+
 def test_query_rate_limited(monkeypatch):
     _patch(monkeypatch, route="narrative", chunks=[])
     from app import query_api
