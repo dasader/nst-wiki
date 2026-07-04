@@ -78,3 +78,12 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
         assert out == {"staged": [{"table": "technologies", "rows": 1}], "needs_review": 0}
     finally:
         _cleanup(source_id)
+
+
+def test_coerce_strips_list_markers():
+    assert mt._coerce("name", "◯ 38 5G 고도화(5G-Adv)") == "5G 고도화(5G-Adv)"
+    assert mt._coerce("field", "<10> 차세대 통신") == "차세대 통신"
+    assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"
+    assert mt._coerce("name", "(3) 첨단로봇") == "첨단로봇"
+    assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
+    assert mt._coerce("trl_level", "7") == 7  # INT 경로 불변
