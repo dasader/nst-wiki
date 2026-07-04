@@ -316,7 +316,7 @@ def test_init_is_idempotent(tmp_path):
 
 Run:
 ```bash
-cd api && python3 -m venv .venv && .venv/bin/pip install -q pytest && .venv/bin/python -m pytest tests -v
+cd api && uv run --with pytest --no-project python -m pytest tests -v
 ```
 Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.init_wiki'` (또는 import 에러)
 
@@ -449,7 +449,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 테스트 통과 확인**
 
-Run: `cd api && .venv/bin/python -m pytest tests -v`
+Run: `cd api && uv run --with pytest --no-project python -m pytest tests -v`
 Expected: 2 passed
 
 - [ ] **Step 5: Commit**
@@ -617,7 +617,7 @@ git commit -m "feat: 최소 API(/health) 및 compose 통합, 위키 볼륨 초�
 ## 요구사항
 
 - Docker + Docker Compose
-- (개발 시) Python 3.12, git
+- (개발 시) uv, git
 
 ## 기동
 
@@ -644,7 +644,7 @@ DB 스키마는 `db/init/*.sql`로만 변경한다 (LLM DDL 금지 — 설계서
 ## 테스트
 
 ```bash
-cd api && python3 -m venv .venv && .venv/bin/pip install -q pytest && .venv/bin/python -m pytest tests -v
+cd api && uv run --with pytest --no-project python -m pytest tests -v
 ```
 ````
 
@@ -663,7 +663,7 @@ Expected: health 200 / public 테이블 목록 출력 / `initialized: /data/wiki
 
 - [ ] **Step 3: 로컬 테스트 재확인**
 
-Run: `cd api && .venv/bin/python -m pytest tests -v`
+Run: `cd api && uv run --with pytest --no-project python -m pytest tests -v`
 Expected: 2 passed
 
 - [ ] **Step 4: Commit**
