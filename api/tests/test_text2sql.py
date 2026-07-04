@@ -25,10 +25,16 @@ def test_validate_sql_appends_limit():
     "UPDATE technologies SET name='x'",
     "SELECT 1 -- 주석",
     "WITH x AS (SELECT 1) INSERT INTO ministries (name) SELECT 'a'",
+    "SELECT * INTO TEMP evil FROM technologies",
 ])
 def test_validate_sql_rejects(bad):
     with pytest.raises(ValueError):
         text2sql.validate_sql(bad)
+
+
+def test_validate_sql_literal_limit_still_gets_capped():
+    out = text2sql.validate_sql("SELECT name FROM technologies WHERE description LIKE '%LIMIT 5%'")
+    assert out.rstrip().endswith("LIMIT 100")
 
 
 def test_run_data_query_executes(monkeypatch):
