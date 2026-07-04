@@ -54,6 +54,16 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 검토하고 승인(위키 main 병합 + DB 반영) 또는 거부한다. 벡터 검색·질의는 Phase 4.
 `.env`에 `GEMINI_API_KEY` 필수.
 
+## 자연어 질의
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query -H "Content-Type: application/json" \
+  -d '{"question": "반도체 분야에 어떤 기술이 있어?"}'
+# mode: auto(기본)/narrative/data/hybrid — 서사는 위키 벡터 검색, 데이터는 Text-to-SQL(읽기 전용)
+```
+
+승인된 페이지만 색인된다. 전체 재색인: `POST /api/v1/reindex` (admin key 필요).
+
 ## 테스트
 
 ```bash
