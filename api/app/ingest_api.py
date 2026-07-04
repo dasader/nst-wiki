@@ -8,16 +8,88 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from app import db
+import wiki_ops
 
 router = APIRouter(prefix="/api/v1")
 ALLOWED_EXTS = {".pdf", ".md", ".xlsx"}
 
 
+class ApproveBody(BaseModel):
+    contradiction_resolutions: dict[str, str] = {}
+
+
+def _wiki_root() -> Path:
+    return Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+
+
 def require_admin(x_admin_key: str = Header(default="")) -> None:
     if not hmac.compare_digest(x_admin_key, os.environ["ADMIN_API_KEY"]):
         raise HTTPException(status_code=401, detail="invalid admin key")
+
+
+@router.get("/ingest")
+def list_ingest_tasks():
+    return {"tasks": db.list_tasks()}
+
+
+@router.get("/ingest/{task_id}/review")
+def review(task_id: str):
+    task = db.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    pages = task["affected_pages"] or []
+    return {
+        "status": task["status"],
+        "source_id": task["source_id"],
+        "wiki_diff": wiki_ops.diff_branch(_wiki_root(), task["source_id"]),
+        "staged": db.list_staged(task["source_id"]),
+        "affected_pages": pages,
+        "suggestions": [p for p in pages if p.get("action") in ("suggested", "rejected")],
+        "contradictions": task["contradictions"] or [],
+    }
+
+
+def _reviewable(task_id: str) -> dict:
+    task = db.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task["status"] != "staged":
+        raise HTTPException(status_code=409, detail=f"not staged (status: {task['status']})")
+    return task
+
+
+@router.post("/ingest/{task_id}/approve", dependencies=[Depends(require_admin)])
+def approve(task_id: str, body: ApproveBody | None = None):
+    task = _reviewable(task_id)
+    counts = db.upsert_staged(task["source_id"])
+    if task["branch_name"]:
+        resolutions = body.contradiction_resolutions if body else {}
+        wiki_ops.approve_branch(
+            _wiki_root(), task["source_id"],
+            f"approve: {task['source_id']}", resolutions=resolutions or None,
+        )
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE ingest_tasks SET status='approved', reviewed_at=%s WHERE task_id=%s",
+            (datetime.now(timezone.utc), task_id),
+        )
+    return {"status": "approved", "upserted": counts}
+
+
+@router.post("/ingest/{task_id}/reject", dependencies=[Depends(require_admin)])
+def reject(task_id: str):
+    task = _reviewable(task_id)
+    db.discard_staged(task["source_id"])
+    wiki_ops.reject_branch(_wiki_root(), task["source_id"])
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE ingest_tasks SET status='rejected', reviewed_at=%s WHERE task_id=%s",
+            (datetime.now(timezone.utc), task_id),
+        )
+    return {"status": "rejected"}
 
 
 @router.post("/ingest", dependencies=[Depends(require_admin)])
