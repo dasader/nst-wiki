@@ -69,3 +69,49 @@ def stage_changes(root: Path, source_id: str, files: dict[str, str], message: st
             _git(root, "checkout", "-f", "main")
             _git(root, "clean", "-fd")
     return branch
+
+
+def _branch_exists(root: Path, branch: str) -> bool:
+    out = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", branch],
+        capture_output=True, text=True,
+    )
+    return out.returncode == 0
+
+
+def diff_branch(root: Path, source_id: str) -> str:
+    branch = f"ingest/{source_id}"
+    if not _branch_exists(root, branch):
+        return ""
+    return _git(root, "diff", f"main...{branch}")
+
+
+def approve_branch(root: Path, source_id: str, message: str,
+                   resolutions: dict[str, str] | None = None) -> None:
+    branch = f"ingest/{source_id}"
+    with _lock(root):
+        _git(root, "checkout", "-f", "main")
+        _git(root, "clean", "-fd")
+        _git(root, "merge", "--squash", branch)
+        if resolutions:
+            log_path = root / "contradictions" / "log.md"
+            log = log_path.read_text(encoding="utf-8")
+            for cid, res in resolutions.items():
+                lines = log.splitlines(keepends=True)
+                log = "".join(
+                    ln.replace("| 미해결 |", f"| 해결({res}) |") if f"| {cid} |" in ln else ln
+                    for ln in lines
+                )
+            log_path.write_text(log, encoding="utf-8")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-m", message)
+        _git(root, "branch", "-D", branch)
+
+
+def reject_branch(root: Path, source_id: str) -> None:
+    branch = f"ingest/{source_id}"
+    with _lock(root):
+        _git(root, "checkout", "-f", "main")
+        _git(root, "clean", "-fd")
+        if _branch_exists(root, branch):
+            _git(root, "branch", "-D", branch)

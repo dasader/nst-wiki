@@ -72,3 +72,37 @@ def test_stage_changes_recovers_from_dirty_tree(tmp_path):
     tree = _git_out(tmp_path, "ls-tree", "-r", "--name-only", "ingest/s11")
     assert "tech/leftover.md" not in tree
     assert not (tmp_path / "tech" / "leftover.md").exists()
+
+
+def test_diff_approve_flow(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.stage_changes(tmp_path, "s20", {"tech/x.md": "# X\n본문"}, "ingest: 문서")
+    diff = wiki_ops.diff_branch(tmp_path, "s20")
+    assert "tech/x.md" in diff and "+# X" in diff
+    wiki_ops.approve_branch(tmp_path, "s20", "approve: 문서")
+    assert (tmp_path / "tech" / "x.md").read_text(encoding="utf-8").startswith("# X")
+    assert "ingest/s20" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
+    log = _git_out(tmp_path, "log", "--oneline", "main")
+    assert "approve: 문서" in log
+
+
+def test_approve_applies_resolutions(tmp_path):
+    init_wiki(tmp_path)
+    log_row = "| s21-1 | 2026-07-04 | tech/a.md | 요약 | 기존 | 신규 | 미해결 |\n"
+    log_content = (tmp_path / "contradictions" / "log.md").read_text(encoding="utf-8") + log_row
+    wiki_ops.stage_changes(tmp_path, "s21",
+                           {"tech/a.md": "# A", "contradictions/log.md": log_content}, "m")
+    wiki_ops.approve_branch(tmp_path, "s21", "approve: m", resolutions={"s21-1": "replace"})
+    merged_log = (tmp_path / "contradictions" / "log.md").read_text(encoding="utf-8")
+    assert "| s21-1 |" in merged_log
+    assert "해결(replace)" in merged_log
+    assert "| 미해결 |" not in merged_log.split("s21-1")[1].split("\n")[0]
+
+
+def test_reject_deletes_branch(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.stage_changes(tmp_path, "s22", {"tech/y.md": "# Y"}, "m")
+    wiki_ops.reject_branch(tmp_path, "s22")
+    assert "ingest/s22" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
+    assert not (tmp_path / "tech" / "y.md").exists()
+    wiki_ops.reject_branch(tmp_path, "s22")  # 멱등: 없는 브랜치도 에러 없이
