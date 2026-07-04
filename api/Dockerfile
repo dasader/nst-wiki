@@ -9,5 +9,5 @@ COPY app ./app
 COPY pipeline ./pipeline
 COPY scripts ./scripts
 COPY tasks.py .
-COPY llm.py llm_config.json wiki_ops.py embeddings.py ./
+COPY llm.py llm_config.json wiki_ops.py embeddings.py search.py ./
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
