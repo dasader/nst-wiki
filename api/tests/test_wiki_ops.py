@@ -39,6 +39,15 @@ def test_list_and_read_pages(tmp_path):
     assert wiki_ops.read_page(tmp_path, "tech/없는페이지.md") is None
 
 
+def test_stage_changes_commits_only_intended_files(tmp_path):
+    wiki = tmp_path / "wiki"
+    init_wiki(wiki)
+    wiki_ops.stage_changes(wiki, "s9", {"tech/c.md": "# C"}, "m")
+    tree = _git_out(wiki, "ls-tree", "-r", "--name-only", "ingest/s9")
+    assert ".ingest.lock" not in tree
+    assert (tmp_path / "wiki.ingest.lock").exists()  # 사이드카 위치 확인
+
+
 def test_rebuild_index_lists_pages(tmp_path):
     init_wiki(tmp_path)
     (tmp_path / "tech" / "hbm.md").write_text("x", encoding="utf-8")

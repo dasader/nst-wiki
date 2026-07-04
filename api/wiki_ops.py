@@ -16,7 +16,8 @@ def _git(root: Path, *args: str) -> str:
 @contextmanager
 def _lock(root: Path):
     # ponytail: 프로세스 간 직렬화는 flock 하나로 충분 (단일 호스트 worker 전제), 분산 워커 도입 시 재검토
-    with open(root / ".ingest.lock", "w") as f:
+    # 잠금 파일은 저장소 밖 사이드카 — 작업 트리 안에 두면 git add -A에 커밋된다
+    with open(root.parent / f"{root.name}.ingest.lock", "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         yield
 
