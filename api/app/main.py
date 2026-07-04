@@ -38,6 +38,8 @@ def dashboard():
 
 from app.ingest_api import router as ingest_router
 from app.query_api import router as query_router
+from app.read_api import router as read_router
 
 app.include_router(ingest_router)
 app.include_router(query_router)
+app.include_router(read_router)
