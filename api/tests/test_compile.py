@@ -35,3 +35,24 @@ def test_compile_source_full_flow(tmp_path, monkeypatch):
     assert out["branch"] == f"ingest/{source_id}"
     assert out["affected_pages"] == [{"path": "tech/a.md", "action": "create"}]
     assert out["affected_tables"] == {"staged": [], "needs_review": 0}
+
+
+def test_compile_source_no_narrative(tmp_path, monkeypatch):
+    wiki = tmp_path / "wiki"
+    init_wiki(wiki)
+    src = tmp_path / "src"
+    parsed = src / "parsed"
+    parsed.mkdir(parents=True)
+    (src / "metadata.json").write_text(json.dumps({"title": "표만 있는 문서"}), encoding="utf-8")
+    (parsed / "chunks.json").write_text(json.dumps([
+        {"id": "c001", "type": "table", "page": None, "ref": "tables/table_001.json"},
+    ], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(compile_mod.classify, "classify_chunks",
+                        lambda p: {"narrative_ids": [], "table_ids": ["c001"], "picture_ids": []})
+    monkeypatch.setattr(compile_mod.describe, "describe_figures", lambda p, t: [])
+    monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
+                        lambda p, s: {"staged": [{"table": "technologies", "rows": 2}], "needs_review": 0})
+    out = compile_mod.compile_source(src, str(uuid.uuid4()), wiki)
+    assert out["branch"] is None
+    assert out["affected_pages"] == []
+    assert out["affected_tables"]["staged"][0]["rows"] == 2

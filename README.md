@@ -40,7 +40,7 @@ curl -X POST http://localhost:8000/api/v1/ingest \
 # → {"task_id": "...", "status": "queued"}
 
 curl http://localhost:8000/api/v1/ingest/<task_id>/status
-# → {"status": "parsed", ...}
+# → {"status": "staged", ...}
 ```
 
 지원 포맷: PDF(기본), MD(사전 변환 문서), XLSX(사업·기관 목록). 파싱 산출물은
