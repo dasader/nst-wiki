@@ -45,7 +45,9 @@ def parse_pdf(src: Path, out: Path) -> None:
                 "columns": [str(c) for c in df.columns],
                 "rows": df.astype(object).where(df.notna(), None).values.tolist(),
             }
-            (out / ref).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            (out / ref).write_text(
+                json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8"
+            )
             chunks.append({"id": cid, "type": "table", "page": page, "ref": ref})
         elif isinstance(item, PictureItem):
             img = item.get_image(doc)

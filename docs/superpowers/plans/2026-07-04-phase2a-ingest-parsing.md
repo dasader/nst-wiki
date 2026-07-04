@@ -799,8 +799,8 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 
 - [ ] **Step 7: 전체 테스트 회귀 확인**
 
-Run: `cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --no-project python -m pytest tests -v`
-Expected: 12 passed (init_wiki 2 + db 1 + parse 4 + tasks 2 + ingest_api 3)
+Run: `cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --no-project python -m pytest tests -v`
+Expected: 13 passed (init_wiki 2 + db 1 + parse 5 + tasks 2 + ingest_api 3)
 
 - [ ] **Step 8: Commit**
 

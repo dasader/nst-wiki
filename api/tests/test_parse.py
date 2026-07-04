@@ -35,6 +35,18 @@ def test_parse_xlsx_sheets_to_tables(tmp_path):
     assert chunks == [{"id": "c001", "type": "table", "page": None, "ref": "tables/table_001.json"}]
 
 
+def test_parse_xlsx_serializes_dates(tmp_path):
+    src = tmp_path / "original.xlsx"
+    pd.DataFrame({"사업명": ["A사업"], "시작일": [pd.Timestamp("2026-01-01")]}).to_excel(
+        src, index=False, sheet_name="일정"
+    )
+    out = tmp_path / "parsed"
+    out.mkdir()
+    parse_xlsx(src, out)
+    data = json.loads((out / "tables" / "table_001.json").read_text(encoding="utf-8"))
+    assert "2026-01-01" in str(data["rows"][0][1])
+
+
 def test_run_pipeline_dispatches_md(tmp_path):
     (tmp_path / "original.md").write_text("# 하나", encoding="utf-8")
     run_pipeline(tmp_path)

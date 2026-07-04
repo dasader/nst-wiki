@@ -4,7 +4,9 @@ from pathlib import Path
 
 
 def run_pipeline(source_dir: Path) -> None:
-    original = next(source_dir.glob("original.*"))
+    original = next(source_dir.glob("original.*"), None)
+    if original is None:
+        raise ValueError(f"no original.* file in {source_dir}")
     out = source_dir / "parsed"
     out.mkdir(exist_ok=True)
     ext = original.suffix.lower()
@@ -57,6 +59,8 @@ def parse_xlsx(src: Path, out: Path) -> None:
             "columns": [str(c) for c in df.columns],
             "rows": df.astype(object).where(df.notna(), None).values.tolist(),
         }
-        (out / ref).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        (out / ref).write_text(
+            json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8"
+        )
         chunks.append({"id": f"c{i:03d}", "type": "table", "page": None, "ref": ref})
     _write_chunks(out, chunks)
