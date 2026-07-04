@@ -1,5 +1,6 @@
 """소스 업로드·상태 조회 엔드포인트 (스펙 6.1절)."""
 import hashlib
+import hmac
 import json
 import os
 import uuid
@@ -15,7 +16,7 @@ ALLOWED_EXTS = {".pdf", ".md", ".xlsx"}
 
 
 def require_admin(x_admin_key: str = Header(default="")) -> None:
-    if x_admin_key != os.environ["ADMIN_API_KEY"]:
+    if not hmac.compare_digest(x_admin_key, os.environ["ADMIN_API_KEY"]):
         raise HTTPException(status_code=401, detail="invalid admin key")
 
 
