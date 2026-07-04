@@ -1,12 +1,15 @@
 import os
+from pathlib import Path
 
 import httpx
 import psycopg
 import redis
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 app = FastAPI(title="nst-wiki API")
+
+STATIC = Path(__file__).parent / "static"
 
 
 def _check(fn) -> str:
@@ -26,6 +29,11 @@ def health():
     }
     ok = all(v == "ok" for v in checks.values())
     return JSONResponse(checks, status_code=200 if ok else 503)
+
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    return FileResponse(STATIC / "dashboard.html")
 
 
 from app.ingest_api import router as ingest_router
