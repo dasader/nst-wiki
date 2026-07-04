@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_DB=llm_wiki
+      - POSTGRES_USER=wiki
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-devpass}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wiki -d llm_wiki"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  pg-data:
+  qdrant-data:
+  wiki-data:
+  sources-data:
