@@ -37,7 +37,7 @@ def validate_sql(sql: str) -> str:
         raise ValueError("SELECT 문만 허용")
     if re.search(r"(?i)\b(insert|update|delete|drop|alter|create|grant|truncate|copy|into)\b", s):
         raise ValueError("쓰기 키워드 금지")
-    if not re.search(r"(?i)\bLIMIT\s+\d+\s*$", s.rstrip()):
+    if not re.search(r"(?i)\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$", s.rstrip()):
         s = f"{s} LIMIT 100"
     return s
 

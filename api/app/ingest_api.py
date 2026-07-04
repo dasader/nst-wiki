@@ -82,9 +82,13 @@ def approve(task_id: str, body: ApproveBody | None = None):
         pages = [p["path"] for p in (task["affected_pages"] or [])
                  if p.get("action") in ("create", "update")]
         if pages:
-            from tasks import embed_pages
+            try:
+                from tasks import embed_pages
 
-            embed_pages.delay(pages)
+                embed_pages.delay(pages)
+            except Exception:
+                # ponytail: 색인 enqueue 실패는 승인을 되돌릴 사유가 아님 — POST /reindex로 복구
+                pass
     except Exception:
         db.set_status(task_id, "staged")  # 클레임 되돌림 — 재시도 가능
         raise

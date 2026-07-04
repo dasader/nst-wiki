@@ -15,6 +15,8 @@ def test_search_wiki_fuses_and_formats(monkeypatch):
         def query_points(self, collection_name, prefetch, query, limit, with_payload):
             assert collection_name == "wiki_pages"
             assert len(prefetch) == 2
+            from qdrant_client import models
+            assert isinstance(query, models.FusionQuery)
             class R: points = [P("tech/a.md", "본문", 0.9)]
             return R()
 

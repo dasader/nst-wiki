@@ -4,5 +4,8 @@
   "describe_figure": {},
   "map_table": {},
   "plan_pages": {},
-  "merge_page": {}
+  "merge_page": {},
+  "text2sql": {},
+  "route_query": {},
+  "synthesize": {}
 }

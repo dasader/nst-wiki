@@ -19,6 +19,12 @@ def test_validate_sql_appends_limit():
     assert "LIMIT 5" in kept and "LIMIT 100" not in kept
 
 
+def test_validate_sql_keeps_limit_offset():
+    out = text2sql.validate_sql("SELECT name FROM technologies LIMIT 5 OFFSET 10")
+    assert out.rstrip().endswith("OFFSET 10")
+    assert "LIMIT 100" not in out
+
+
 @pytest.mark.parametrize("bad", [
     "DELETE FROM technologies",
     "SELECT 1; DROP TABLE technologies",
