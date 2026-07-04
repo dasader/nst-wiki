@@ -5,6 +5,7 @@ services:
     ports: ["8000:8000"]              # NPM이 프록시할 포트
     environment:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
+      - READONLY_DATABASE_URL=postgresql://wiki_ro:ro_devpass@postgres:5432/llm_wiki
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - WIKI_REPO_PATH=/data/wiki
@@ -13,6 +14,7 @@ services:
     volumes:
       - wiki-data:/data/wiki
       - sources-data:/data/sources
+      - model-cache:/root/.cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,6 +29,8 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
+      - READONLY_DATABASE_URL=postgresql://wiki_ro:ro_devpass@postgres:5432/llm_wiki
+      - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - WIKI_REPO_PATH=/data/wiki
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}

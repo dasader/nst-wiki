@@ -10,3 +10,5 @@ docling>=2.15,<3
 easyocr
 opencv-python-headless>=4.8
 google-genai
+qdrant-client
+FlagEmbedding>=1.2
