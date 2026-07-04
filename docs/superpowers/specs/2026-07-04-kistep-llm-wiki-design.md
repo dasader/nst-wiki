@@ -32,8 +32,9 @@
 
 ### 1.4 v1 범위
 
-- **대상 자료**: 공개 자료 전용(공개 정책문서, DART 공시, 공개 NTIS 데이터, 해외 공개 보고서). 비공개·민감문서와 온프레미스 LLM 라우팅은 v2 확장점으로만 남긴다
-- **사용자**: 개인 단독 사용. 로그인 체계 없이 Tailscale 네트워크 경계 + admin key로 보호
+- **대상 자료**: 공개 자료 전용(공개 정책문서, 국가전략기술 사업·정책기관 목록 등 공개 데이터셋, 해외 공개 보고서). 비공개·민감문서와 온프레미스 LLM 라우팅은 v2 확장점으로만 남긴다
+- **입력 방식**: 전량 수동 업로드. PDF가 기본이고, MD(사용자가 Docling 등으로 직접 변환한 문서)와 XLSX(사업·기관 목록 등 데이터셋)를 지원한다. HWP는 미지원이며, DART·NTIS 등 외부 API 자동 연동은 두지 않는다
+- **사용자**: 개인 단독 사용. 로그인 체계 없이 리버스 프록시(NPM) 수준 접근 제한 + admin key로 보호
 - **LLM**: Gemini API 단일 공급자 (상세는 9절)
 
 ## 2. 전체 아키텍처
@@ -43,12 +44,12 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Layer 1: Sources (immutable)                           │
-│  정책문서(PDF/HWP) │ DART 공시 │ NTIS 사업 │ 해외보고서  │
+│  정책문서(PDF/MD) │ 엑셀 데이터셋(사업·기관 목록) │ 보고서 │
 └──────────────────────────┬──────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Layer 2: Ingest Pipeline (LLM-powered)                 │
-│  HWP 변환 → Docling 파싱 → LLM 분류기                    │
+│  포맷 분기(PDF/MD/XLSX) → Docling 파싱 → LLM 분류기      │
 │  → [서사 추출 | 표→고정 스키마 매핑] → 스테이징           │
 └────────────┬───────────────────────────────┬────────────┘
              ▼                               ▼
@@ -77,8 +78,7 @@
 ```
 /sources/
 ├── {source_id}/
-│   ├── original.pdf          # 원본 파일
-│   ├── converted.docx        # HWP 변환 산출물 (해당 시)
+│   ├── original.pdf          # 원본 파일 (pdf/md/xlsx)
 │   ├── metadata.json         # 수집 메타데이터
 │   └── ingest_log.json       # 인제스트 이력
 ```
@@ -88,7 +88,7 @@
 ```json
 {
   "source_id": "uuid",
-  "source_type": "policy_doc | dart_filing | ntis_project | foreign_report",
+  "source_type": "policy_doc | dataset_excel | foreign_report",
   "title": "문서 제목",
   "publisher": "발행기관",
   "publish_date": "2026-04-15",
@@ -98,27 +98,29 @@
 }
 ```
 
-소스 유형별 수집 방식:
+입력은 전량 수동 업로드이며, 자동/반자동 수집기는 두지 않는다. 포맷별 처리 경로:
 
-| 소스 유형 | 수집 방식 | 자동화 수준 |
+| 입력 포맷 | 대상 자료 | 처리 경로 |
 |---|---|---|
-| 정책문서 (PDF/HWP) | 수동 업로드 또는 웹 클리퍼 | 반자동 |
-| DART 공시 | OpenDART API 스케줄러 | 완전 자동 |
-| NTIS 사업목록 | 수동 다운로드 후 업로드 | 반자동 |
-| 해외 S&T 보고서 | RSS/웹 스크래핑 + 수동 큐레이션 | 반자동 |
+| PDF (기본) | 정책문서, 해외 보고서 | Docling 파싱 → LLM 분류기 |
+| MD | 사용자가 Docling 등으로 직접 변환한 문서 | 파싱 생략 → LLM 분류기 |
+| XLSX | 국가전략기술 사업 목록, 정책기관 목록 등 데이터셋 | 정형 표 경로 직행 (스키마 매핑) |
+
+HWP는 v1에서 지원하지 않는다. HWP 원본은 사용자가 사전에 PDF 또는 MD로 변환해 업로드한다.
 
 ## 4. Layer 2: Ingest Pipeline
 
 ### 4.1 파이프라인 흐름
 
 ```
-원본 문서 업로드
+원본 문서 업로드 (PDF / MD / XLSX)
     ▼
-[Stage 0] HWP/HWPX 전처리 (해당 시)
-    │  hwpx → OOXML 변환 또는 hwp5html 경유.
-    │  변환 실패 시 태스크를 "수동 변환 필요" 상태로 표시하고 중단
+[Stage 0] 입력 포맷 분기
+    │  PDF  → Stage 1 (Docling)
+    │  MD   → Stage 1 생략, Stage 2로 직행
+    │  XLSX → Stage 1·2 생략, 정형 표 경로 [3b]로 직행
     ▼
-[Stage 1] Docling 파싱 (TableFormer ACCURATE + OCR)
+[Stage 1] Docling 파싱 (TableFormer ACCURATE + OCR) — PDF만
     ▼
 [Stage 2] LLM 콘텐츠 분류기 (청크 단위: 서사 vs 정형 표 판별)
     │
@@ -318,7 +320,7 @@ CREATE TABLE ingest_tasks (
     task_id VARCHAR(100) PRIMARY KEY,
     source_id VARCHAR(100) NOT NULL,
     status VARCHAR(30) NOT NULL,       -- queued/parsing/classifying/staged/
-                                       -- approved/rejected/failed/manual_conversion_needed
+                                       -- approved/rejected/failed
     branch_name VARCHAR(200),
     affected_pages JSONB,              -- 갱신된 페이지 + 갱신 제안 목록
     affected_tables JSONB,
@@ -419,6 +421,7 @@ Text-to-SQL은 읽기 전용 DB 계정으로 실행하고, `public` 스키마의
 services:
   api:
     build: ./api
+    ports: ["8000:8000"]              # NPM이 프록시할 포트
     environment:
       - DATABASE_URL=postgresql://wiki:pass@postgres:5432/llm_wiki
       - QDRANT_URL=http://qdrant:6333
@@ -444,6 +447,7 @@ services:
 
   frontend:
     build: ./frontend
+    ports: ["3000:3000"]              # NPM이 프록시할 포트
     environment:
       - NEXT_PUBLIC_API_URL=http://api:8000
 
@@ -464,12 +468,6 @@ services:
   redis:
     image: redis:7-alpine
 
-  caddy:
-    image: caddy:2
-    ports: ["443:443"]
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-
 volumes:
   wiki-data:
   sources-data:
@@ -479,18 +477,17 @@ volumes:
 
 ### 8.2 Proxmox 환경 통합
 
-- Caddy 리버스 프록시: 기존 LXC에서 `wiki.mem.photos` 서브도메인으로 라우팅
+- Nginx Proxy Manager(NPM): 기존 인스턴스에서 `nst-wiki.mem.photos` 서브도메인을 frontend(3000)/api(8000) 포트로 라우팅
 - Cloudflare 와일드카드 SSL: 기존 설정 활용
-- Tailscale: 전체 서비스는 Tailscale 네트워크 내에서만 접근
 - GPU 가용 시: Docling TableFormer ACCURATE 모드용 별도 LXC/VM
 
 ### 8.3 접근 제어
 
 개인 사용 전제로 로그인 체계는 두지 않는다.
 
-- **네트워크 경계**: Tailscale 네트워크 내에서만 접근 가능
+- **리버스 프록시 경계**: 서비스는 NPM 뒤 `nst-wiki.mem.photos`로 노출된다. 인터넷에서 접근 가능한 주소이므로, 필요 시 NPM의 Access List(IP 제한) 또는 Basic Auth로 접근을 제한한다
 - **admin key**: 변경성 엔드포인트(`POST /ingest`, approve/reject, lint 트리거)는 `X-Admin-Key` 헤더 필수. 키는 환경변수 `ADMIN_API_KEY`로 주입
-- 조회성 엔드포인트(위키 열람, 질의, 데이터 탐색)는 네트워크 내 자유 접근
+- 조회성 엔드포인트(위키 열람, 질의, 데이터 탐색)는 앱 수준 인증 없음. 단, `POST /query`는 LLM 호출 비용을 유발하므로 IP 기준 rate limit을 둔다
 
 ## 9. LLM 전략
 
@@ -522,11 +519,11 @@ v1은 Gemini API 단일 공급자를 사용한다.
 | 단계 | 구성요소 | 예상 기간 | 이유 |
 |---|---|---|---|
 | Phase 1 | 저장소 골격: wiki repo 구조 + PostgreSQL 고정 스키마(staging 포함) + docker-compose 기동 | 1-2주 | 이후 모든 단계의 검증 기반 |
-| Phase 2 | 인제스트 파이프라인: HWP 전처리 → Docling → 분류 → 서사/표 경로 → 스테이징 | 3-4주 | 시스템의 핵심 |
+| Phase 2 | 인제스트 파이프라인: 포맷 분기(PDF/MD/XLSX) → Docling → 분류 → 서사/표 경로 → 스테이징 | 3-4주 | 시스템의 핵심 |
 | Phase 3 | 승인 워크플로 + 최소 대시보드 (diff 뷰, 모순 해결, 승인/거부) | 2주 | 신뢰 모델 완성, 이때부터 실사용 가능 |
 | Phase 4 | 벡터 임베딩 + 하이브리드 질의 API (Text-to-SQL 포함) | 2주 | 질의 서비스화 |
 | Phase 5 | 프론트엔드 확장: Wiki 브라우저, 질의 UI, 데이터 탐색기 | 3-4주 | 사용자 인터페이스 |
-| Phase 6 | DART 자동수집기 + Lint + 모니터링 | 2주 | 운영 안정화 |
+| Phase 6 | Lint + 모니터링 + 백업 | 2주 | 운영 안정화 |
 
 ## 12. 핵심 설계 판단
 
@@ -552,4 +549,5 @@ LLM이 표마다 테이블을 생성·확장하면 유사 테이블이 난립하
 
 - 비공개·민감문서 처리: 온프레미스 LLM 라우팅, 문서 민감도 분류
 - 팀 공유: 로그인·권한 체계, 승인 권한 분리, KISTEP SSO 연동
-- 웹 클리퍼, RSS 자동 수집 고도화
+- 자동 수집기: DART·NTIS API 연동, RSS, 웹 클리퍼
+- HWP 직접 입력 지원 (변환 파이프라인)
