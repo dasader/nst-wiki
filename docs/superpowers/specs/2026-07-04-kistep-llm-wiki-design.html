@@ -718,8 +718,21 @@ volumes:
 <ul>
   <li>Nginx Proxy Manager(NPM): 기존 인스턴스에서 <code>nst-wiki.mem.photos</code> 서브도메인을 frontend(3000)/api(8000) 포트로 라우팅</li>
   <li>Cloudflare 와일드카드 SSL: 기존 설정 활용</li>
-  <li>GPU 가용 시: Docling TableFormer ACCURATE 모드용 별도 LXC/VM</li>
+  <li>호스트 CPU: AMD Ryzen 7 H 255 (Hawk Point, 8코어/16스레드, Radeon 780M iGPU)</li>
 </ul>
+
+<p>리소스 사이징 (Docling 기준):</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>항목</th><th>권장</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td>ingest-worker</td><td>4 vCPU / 16GB RAM</td><td>Docling CPU 모드, Celery concurrency=2. 대형 PDF 처리 시 수 GB 메모리 스파이크 감안</td></tr>
+    <tr><td>모델 캐시 디스크</td><td>약 2GB</td><td>레이아웃 모델 + TableFormer + EasyOCR(한국어) 최초 다운로드 후 캐시</td></tr>
+    <tr><td>처리 속도 기대치</td><td>텍스트 PDF 페이지당 2~6초, 스캔본(OCR)은 페이지당 수십 초</td><td>인제스트가 비동기(Celery)라 지연 허용</td></tr>
+  </tbody>
+</table></div>
+<div class="callout">
+  <p><strong>GPU 가속 검토 결과 — 미채택</strong>: 호스트 iGPU(Radeon 780M, gfx1103)는 ROCm/PyTorch 공식 지원 대상이 아니다(2026-07 기준 업스트림 지원 작업이 진행 중이나 MIOpen 사전 컴파일 커널 DB 부재 등 미완). <code>HSA_OVERRIDE_GFX_VERSION</code> 우회나 소스 빌드로 동작시킬 수는 있으나 불안정하고, LXC 환경에서 <code>/dev/kfd</code>·<code>/dev/dri</code> 패스스루 부담도 크다. 수동 업로드 기준 일 수 건 수준의 워크로드는 8코어 CPU 처리로 충분하므로 CPU 모드로 확정한다. 대량 백로그(과거 문건 수백 건) 일괄 인제스트가 필요해지면 NVIDIA GPU 장비 추가를 검토한다(v2).</p>
+</div>
 
 <h3><span class="n">8.3</span>접근 제어</h3>
 <p>개인 사용 전제로 로그인 체계는 두지 않는다.</p>

@@ -498,7 +498,17 @@ volumes:
 
 - Nginx Proxy Manager(NPM): 기존 인스턴스에서 `nst-wiki.mem.photos` 서브도메인을 frontend(3000)/api(8000) 포트로 라우팅
 - Cloudflare 와일드카드 SSL: 기존 설정 활용
-- GPU 가용 시: Docling TableFormer ACCURATE 모드용 별도 LXC/VM
+- 호스트 CPU: AMD Ryzen 7 H 255 (Hawk Point, 8코어/16스레드, Radeon 780M iGPU)
+
+리소스 사이징 (Docling 기준):
+
+| 항목 | 권장 | 비고 |
+|---|---|---|
+| ingest-worker | 4 vCPU / 16GB RAM | Docling CPU 모드, Celery concurrency=2. 대형 PDF 처리 시 수 GB 메모리 스파이크 감안 |
+| 모델 캐시 디스크 | 약 2GB | 레이아웃 모델 + TableFormer + EasyOCR(한국어) 최초 다운로드 후 캐시 |
+| 처리 속도 기대치 | 텍스트 PDF 페이지당 2~6초, 스캔본(OCR)은 페이지당 수십 초 | 인제스트가 비동기(Celery)라 지연 허용 |
+
+**GPU 가속 검토 결과 — 미채택**: 호스트 iGPU(Radeon 780M, gfx1103)는 ROCm/PyTorch 공식 지원 대상이 아니다(2026-07 기준 업스트림 지원 작업이 진행 중이나 MIOpen 사전 컴파일 커널 DB 부재 등 미완). `HSA_OVERRIDE_GFX_VERSION` 우회나 소스 빌드로 동작시킬 수는 있으나 불안정하고, LXC 환경에서 `/dev/kfd`·`/dev/dri` 패스스루 부담도 크다. 수동 업로드 기준 일 수 건 수준의 워크로드는 8코어 CPU 처리로 충분하므로 CPU 모드로 확정한다. 대량 백로그(과거 문건 수백 건) 일괄 인제스트가 필요해지면 NVIDIA GPU 장비 추가를 검토한다(v2).
 
 ### 8.3 접근 제어
 
