@@ -60,3 +60,20 @@ def test_low_confidence_falls_back(tmp_path, monkeypatch):
         assert abs(row["mapping_confidence"] - 0.4) < 1e-6
     finally:
         _cleanup(source_id)
+
+
+def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
+    source_id = str(uuid.uuid4())
+    # 주의: staging.technologies.field는 NOT NULL — name+field는 매핑하되,
+    # 표에 없는 원본 컬럼(유령컬럼)과 빈 행이 크래시 없이 처리되는지 검증한다.
+    _write_table(tmp_path, {"table_title": "기술 목록", "columns": ["기술명", "분야"],
+                            "rows": [["HBM", "반도체"], []]})
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+        "table": "technologies", "confidence": 0.9,
+        "column_mapping": {"기술명": "name", "분야": "field", "유령컬럼": "sub_field"},
+    })
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out == {"staged": [{"table": "technologies", "rows": 1}], "needs_review": 0}
+    finally:
+        _cleanup(source_id)

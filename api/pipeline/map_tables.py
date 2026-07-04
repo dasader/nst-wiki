@@ -59,37 +59,54 @@ def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
     schema_desc = "\n".join(f"- {t}: {', '.join(cols)}" for t, cols in CORE_TABLES.items())
     for tf in sorted(tables_dir.glob("table_*.json")):
         payload = json.loads(tf.read_text(encoding="utf-8"))
-        out = llm.generate("map_table", PROMPT.format(
-            schema_desc=schema_desc,
-            title=payload.get("table_title", ""),
-            columns=payload["columns"],
-            sample=payload["rows"][:5],
-        ), schema=MAP_SCHEMA)
-        table = out["table"]
-        mapping = {s: d for s, d in out["column_mapping"].items()
-                   if table in CORE_TABLES and d in CORE_TABLES.get(table, [])}
-        if table in CORE_TABLES and out["confidence"] >= CONFIDENCE_THRESHOLD and mapping:
-            col_idx = {c: i for i, c in enumerate(payload["columns"])}
-            dst_cols = list(mapping.values()) + ["source_id"]
-            n = 0
-            with db.connect() as conn:
-                for row in payload["rows"]:
-                    values = [_coerce(dst, row[col_idx[src]]) for src, dst in mapping.items()]
+        try:
+            out = llm.generate("map_table", PROMPT.format(
+                schema_desc=schema_desc,
+                title=payload.get("table_title", ""),
+                columns=payload["columns"],
+                sample=payload["rows"][:5],
+            ), schema=MAP_SCHEMA)
+            table = out["table"]
+            mapping = {s: d for s, d in out["column_mapping"].items()
+                       if table in CORE_TABLES and d in CORE_TABLES.get(table, [])
+                       and s in payload["columns"]}
+            if table in CORE_TABLES and out["confidence"] >= CONFIDENCE_THRESHOLD and mapping:
+                col_idx = {c: i for i, c in enumerate(payload["columns"])}
+                dst_cols = list(mapping.values()) + ["source_id"]
+                n = 0
+                with db.connect() as conn:
+                    for row in payload["rows"]:
+                        values = [
+                            _coerce(dst, row[col_idx[src]]) if col_idx[src] < len(row) else None
+                            for src, dst in mapping.items()
+                        ]
+                        if all(v is None for v in values):
+                            continue
+                        conn.execute(
+                            f"INSERT INTO staging.{table} ({', '.join(dst_cols)}) "
+                            f"VALUES ({', '.join(['%s'] * len(dst_cols))})",
+                            values + [source_id],
+                        )
+                        n += 1
+                result["staged"].append({"table": table, "rows": n})
+            else:
+                with db.connect() as conn:
                     conn.execute(
-                        f"INSERT INTO staging.{table} ({', '.join(dst_cols)}) "
-                        f"VALUES ({', '.join(['%s'] * len(dst_cols))})",
-                        values + [source_id],
+                        "INSERT INTO staging_tables (source_id, table_title, raw_data, "
+                        "suggested_mapping, mapping_confidence) VALUES (%s, %s, %s, %s, %s)",
+                        (source_id, payload.get("table_title", ""),
+                         json.dumps(payload, ensure_ascii=False),
+                         json.dumps(out, ensure_ascii=False), out["confidence"]),
                     )
-                    n += 1
-            result["staged"].append({"table": table, "rows": n})
-        else:
+                result["needs_review"] += 1
+        except Exception as e:
             with db.connect() as conn:
                 conn.execute(
                     "INSERT INTO staging_tables (source_id, table_title, raw_data, "
                     "suggested_mapping, mapping_confidence) VALUES (%s, %s, %s, %s, %s)",
                     (source_id, payload.get("table_title", ""),
                      json.dumps(payload, ensure_ascii=False),
-                     json.dumps(out, ensure_ascii=False), out["confidence"]),
+                     json.dumps({"error": str(e)}, ensure_ascii=False), 0.0),
                 )
             result["needs_review"] += 1
     return result
