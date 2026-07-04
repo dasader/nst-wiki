@@ -56,7 +56,9 @@ def stage_changes(root: Path, source_id: str, files: dict[str, str], message: st
         _git(root, "checkout", "-B", branch)
         try:
             for rel, content in files.items():
-                p = root / rel
+                p = (root / rel).resolve()
+                if not p.is_relative_to(root.resolve()):
+                    raise ValueError(f"path escapes wiki root: {rel}")
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding="utf-8")
             (root / "index.md").write_text(rebuild_index(root), encoding="utf-8")

@@ -40,6 +40,21 @@ def test_compile_narrative_records_contradictions(tmp_path, monkeypatch):
     assert "분야 수 불일치" in out["files"]["contradictions/log.md"]
 
 
+def test_compile_narrative_rejects_bad_paths(tmp_path, monkeypatch):
+    init_wiki(tmp_path)
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[
+            {"path": "../escape.md", "action": "create", "title": "X"},
+            {"path": "unknown/a.md", "action": "create", "title": "Y"},
+            {"path": "tech/ok.md", "action": "create", "title": "OK"},
+        ],
+        merged={"content": "본문", "contradictions": []},
+    ))
+    out = narrative.compile_narrative(tmp_path, "src4", {"title": "문서"}, ["서사"])
+    assert [p["action"] for p in out["affected_pages"]] == ["rejected", "rejected", "create"]
+    assert list(f for f in out["files"] if f.endswith("escape.md")) == []
+
+
 def test_compile_narrative_caps_at_15(tmp_path, monkeypatch):
     init_wiki(tmp_path)
     pages = [{"path": f"tech/t{i}.md", "action": "create", "title": f"T{i}"} for i in range(20)]

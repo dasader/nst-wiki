@@ -1,4 +1,5 @@
 """서사 경로: 페이지 계획(LLM) → 페이지별 병합(LLM) → 모순 기록. 산출물은 파일 dict."""
+import re
 from datetime import date
 from pathlib import Path
 
@@ -6,6 +7,8 @@ import llm
 import wiki_ops
 
 MAX_PAGES = 15
+
+PATH_RE = re.compile(r"^(tech|entity|events|synthesis)/[\w가-힣.-]+\.md$")
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -91,6 +94,9 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
     files: dict[str, str] = {}
     affected, contradictions = [], []
     for i, page in enumerate(plan["pages"]):
+        if not PATH_RE.match(page["path"]):
+            affected.append({"path": page["path"], "action": "rejected"})
+            continue
         if i >= MAX_PAGES:
             affected.append({"path": page["path"], "action": "suggested"})
             continue

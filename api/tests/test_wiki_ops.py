@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from scripts.init_wiki import init_wiki
 import wiki_ops
 
@@ -46,6 +48,13 @@ def test_stage_changes_commits_only_intended_files(tmp_path):
     tree = _git_out(wiki, "ls-tree", "-r", "--name-only", "ingest/s9")
     assert ".ingest.lock" not in tree
     assert (tmp_path / "wiki.ingest.lock").exists()  # 사이드카 위치 확인
+
+
+def test_stage_changes_rejects_path_escape(tmp_path):
+    init_wiki(tmp_path)
+    with pytest.raises(ValueError, match="escapes"):
+        wiki_ops.stage_changes(tmp_path, "s10", {"../evil.md": "x"}, "m")
+    assert _git_out(tmp_path, "branch", "--show-current").strip() == "main"
 
 
 def test_rebuild_index_lists_pages(tmp_path):
