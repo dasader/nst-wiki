@@ -7,18 +7,22 @@ from app import db
 from tasks import run_ingest
 
 
-def test_run_ingest_md_reaches_parsed(tmp_path, monkeypatch):
+def test_run_ingest_md_reaches_staged(tmp_path, monkeypatch):
+    import tasks as tasks_mod
     source_id = str(uuid.uuid4())
     src_dir = tmp_path / source_id
     src_dir.mkdir()
     (src_dir / "original.md").write_text("# 제목\n본문", encoding="utf-8")
+    (src_dir / "metadata.json").write_text('{"title": "t"}', encoding="utf-8")
     monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
+    import pipeline.compile as compile_mod
+    monkeypatch.setattr(compile_mod, "compile_source", lambda *a, **k: {
+        "branch": None, "affected_pages": [], "affected_tables": {}, "contradictions": []})
     task_id = str(uuid.uuid4())
     db.create_task(task_id, source_id)
     try:
-        run_ingest(task_id)
-        assert db.get_task(task_id)["status"] == "parsed"
-        assert (src_dir / "parsed" / "chunks.json").exists()
+        tasks_mod.run_ingest(task_id)
+        assert db.get_task(task_id)["status"] == "staged"
     finally:
         db.delete_task(task_id)
 

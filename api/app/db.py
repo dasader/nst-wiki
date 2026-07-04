@@ -1,4 +1,5 @@
 """ingest_tasks 테이블 접근 헬퍼."""
+import json
 import os
 
 import psycopg
@@ -35,3 +36,15 @@ def set_status(task_id: str, status: str, error: str | None = None) -> None:
 def delete_task(task_id: str) -> None:
     with connect() as conn:
         conn.execute("DELETE FROM ingest_tasks WHERE task_id = %s", (task_id,))
+
+
+def save_results(task_id: str, results: dict) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE ingest_tasks SET affected_pages = %s, affected_tables = %s, "
+            "contradictions = %s, branch_name = %s WHERE task_id = %s",
+            (json.dumps(results["affected_pages"], ensure_ascii=False),
+             json.dumps(results["affected_tables"], ensure_ascii=False),
+             json.dumps(results["contradictions"], ensure_ascii=False),
+             results["branch"], task_id),
+        )
