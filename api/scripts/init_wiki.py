@@ -1,7 +1,6 @@
 """위키 데이터 저장소를 초기화한다. 멱등: 이미 git 저장소면 아무것도 하지 않는다."""
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 DIRS = ["tech", "entity", "events", "synthesis", "summaries", "contradictions"]
@@ -99,7 +98,6 @@ def init_wiki(root: Path) -> bool:
     root.mkdir(parents=True, exist_ok=True)
     for d in DIRS:
         (root / d).mkdir(exist_ok=True)
-        (root / d / ".gitkeep").touch()
     (root / "index.md").write_text(INDEX_MD, encoding="utf-8")
     (root / "schema.md").write_text(SCHEMA_MD, encoding="utf-8")
     (root / "contradictions" / "log.md").write_text(LOG_MD, encoding="utf-8")
@@ -115,4 +113,3 @@ if __name__ == "__main__":
     root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
     created = init_wiki(root)
     print(f"initialized: {root}" if created else f"already initialized: {root}")
-    sys.exit(0)
