@@ -21,6 +21,24 @@ services:
       redis:
         condition: service_started
 
+  ingest-worker:
+    build: ./api
+    command: celery -A tasks worker --concurrency=2 --loglevel=info
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
+      - REDIS_URL=redis://redis:6379/0
+      - WIKI_REPO_PATH=/data/wiki
+    volumes:
+      - wiki-data:/data/wiki
+      - sources-data:/data/sources
+      - model-cache:/root/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
   postgres:
     image: postgres:16
     restart: unless-stopped
