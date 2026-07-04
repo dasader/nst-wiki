@@ -1,14 +1,10 @@
 """Celery 앱과 인제스트 태스크. 워커 실행: celery -A tasks worker"""
 import os
-import sys
 from pathlib import Path
 
 from celery import Celery
 
 from app import db
-
-# celery 워커의 import 경로 확보
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 celery = Celery("nst_wiki", broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
 
