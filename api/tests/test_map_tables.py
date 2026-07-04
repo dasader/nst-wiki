@@ -27,7 +27,7 @@ def test_high_confidence_stages_rows(tmp_path, monkeypatch):
                             "rows": [["HBM", "반도체"], ["고체전지", "이차전지"]]})
     monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
         "table": "technologies", "confidence": 0.95,
-        "column_mapping": {"기술명": "name", "분야": "field"},
+        "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"}],
     })
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
@@ -46,7 +46,7 @@ def test_low_confidence_falls_back(tmp_path, monkeypatch):
     source_id = str(uuid.uuid4())
     _write_table(tmp_path, {"table_title": "알 수 없는 표", "columns": ["가", "나"], "rows": [["1", "2"]]})
     monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
-        "table": "technologies", "confidence": 0.4, "column_mapping": {}
+        "table": "technologies", "confidence": 0.4, "column_mapping": []
     })
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
@@ -70,7 +70,8 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
                             "rows": [["HBM", "반도체"], []]})
     monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
         "table": "technologies", "confidence": 0.9,
-        "column_mapping": {"기술명": "name", "분야": "field", "유령컬럼": "sub_field"},
+        "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"},
+                           {"src": "유령컬럼", "dst": "sub_field"}],
     })
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)

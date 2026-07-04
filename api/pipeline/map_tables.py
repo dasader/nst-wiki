@@ -22,7 +22,14 @@ MAP_SCHEMA = {
     "properties": {
         "table": {"type": "string", "enum": list(CORE_TABLES) + ["none"]},
         "confidence": {"type": "number"},
-        "column_mapping": {"type": "object", "additionalProperties": {"type": "string"}},
+        "column_mapping": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"src": {"type": "string"}, "dst": {"type": "string"}},
+                "required": ["src", "dst"],
+            },
+        },
     },
     "required": ["table", "confidence", "column_mapping"],
 }
@@ -36,7 +43,7 @@ PROMPT = """한국 정책문서에서 추출한 표를 DB 스키마에 매핑하
 표 컬럼: {columns}
 샘플 행 (최대 5개): {sample}
 
-이 표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 {{"표 컬럼명": "DB 컬럼명"}}을,
+이 표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 [{{"src": "표 컬럼명", "dst": "DB 컬럼명"}}, ...] 목록을,
 대응하지 않으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
 
 
@@ -67,7 +74,9 @@ def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
                 sample=payload["rows"][:5],
             ), schema=MAP_SCHEMA)
             table = out["table"]
-            mapping = {s: d for s, d in out["column_mapping"].items()
+            raw_mapping = {m["src"]: m["dst"] for m in out.get("column_mapping", [])
+                           if isinstance(m, dict) and "src" in m and "dst" in m}
+            mapping = {s: d for s, d in raw_mapping.items()
                        if table in CORE_TABLES and d in CORE_TABLES.get(table, [])
                        and s in payload["columns"]}
             if table in CORE_TABLES and out["confidence"] >= CONFIDENCE_THRESHOLD and mapping:
