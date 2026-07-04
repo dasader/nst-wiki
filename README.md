@@ -48,7 +48,10 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 지원 포맷: PDF(기본), MD(사전 변환 문서), XLSX(사업·기관 목록). 파싱 산출물은
 `sources-data` 볼륨의 `{source_id}/parsed/`에 생성된다.
 파싱 후 Gemini가 내용을 분류·해석하여 서사는 위키 스테이징 브랜치(`ingest/{source_id}`)에,
-표는 PostgreSQL `staging` 스키마에 적재한다 (status: `staged`). 승인·병합 UI는 Phase 3.
+표는 PostgreSQL `staging` 스키마에 적재한다 (status: `staged`).
+
+**승인 대시보드**: http://localhost:8000/ — staged 태스크의 위키 diff·staging 데이터·모순을
+검토하고 승인(위키 main 병합 + DB 반영) 또는 거부한다. 벡터 검색·질의는 Phase 4.
 `.env`에 `GEMINI_API_KEY` 필수.
 
 ## 테스트
