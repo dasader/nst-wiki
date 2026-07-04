@@ -30,6 +30,22 @@ curl http://localhost:8000/health
 
 DB 스키마는 `db/init/*.sql`로만 변경한다 (LLM DDL 금지 — 설계서 원칙 5).
 
+## 문서 인제스트
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "X-Admin-Key: $ADMIN_API_KEY" \
+  -F "file=@문서.pdf" -F "title=문서 제목" \
+  -F "publisher=발행기관" -F "tags=NEXT,반도체"
+# → {"task_id": "...", "status": "queued"}
+
+curl http://localhost:8000/api/v1/ingest/<task_id>/status
+# → {"status": "parsed", ...}
+```
+
+지원 포맷: PDF(기본), MD(사전 변환 문서), XLSX(사업·기관 목록). 파싱 산출물은
+`sources-data` 볼륨의 `{source_id}/parsed/`에 생성된다. LLM 분류·위키 반영은 Phase 2b.
+
 ## 테스트
 
 ```bash

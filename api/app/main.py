@@ -26,3 +26,8 @@ def health():
     }
     ok = all(v == "ok" for v in checks.values())
     return JSONResponse(checks, status_code=200 if ok else 503)
+
+
+from app.ingest_api import router as ingest_router
+
+app.include_router(ingest_router)
