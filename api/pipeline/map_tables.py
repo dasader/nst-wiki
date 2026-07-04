@@ -21,7 +21,7 @@ INT_COLS = {"trl_level", "budget_total", "budget_annual", "start_year", "end_yea
 # ponytail: 정책문서 표의 선행 서식(목록 기호·항목 번호·<n>) 제거 휴리스틱 —
 # 숫자+공백/구두점 패턴만 제거하므로 "5G"처럼 숫자로 시작하는 명칭은 보존.
 # 새 서식 유형이 나타나면 패턴 추가로 대응 (완전한 파서는 YAGNI)
-_PREFIX_RE = re.compile(r"^(?:[◯○●◦□■▷▶·•]\s*|\d+[.)]\s*|\d+\s+|<\d+>\s*|\(\d+\)\s*|[-–]\s+)")
+_PREFIX_RE = re.compile(r"^(?:[◯○●◦□■▷▶·•]\s*|[①-⑳㉑-㉟]\s*|\d+[.)]\s*|\d+\s+|<\d+>\s*|\(\d+\)\s*|[-–]\s+)")
 
 
 def _clean_str(s: str) -> str:

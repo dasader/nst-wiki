@@ -86,4 +86,5 @@ def test_coerce_strips_list_markers():
     assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"
     assert mt._coerce("name", "(3) 첨단로봇") == "첨단로봇"
     assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
+    assert mt._coerce("name", "⑩ 차세대 이차전지 소재·셀") == "차세대 이차전지 소재·셀"  # 원문자 번호
     assert mt._coerce("trl_level", "7") == 7  # INT 경로 불변
