@@ -28,21 +28,36 @@ def _root() -> Path:
     return Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
 
 
+def _main_pages(root: Path) -> list[str]:
+    out = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "main", "--name-only"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    return [p for p in out.splitlines()
+            if p.endswith(".md") and p.split("/")[0] in wiki_ops.PAGE_DIRS]
+
+
 @router.get("/wiki")
 def wiki_list():
-    return {"pages": wiki_ops.list_pages(_root())}
+    return {"pages": _main_pages(_root())}
 
 
 @router.get("/wiki/page")
 def wiki_page(path: str = Query(...)):
     root = _root()
-    if path not in wiki_ops.list_pages(root):
+    if path not in _main_pages(root):
         raise HTTPException(status_code=404, detail="page not found")
-    content = wiki_ops.read_page(root, path) or ""
+    show = subprocess.run(
+        ["git", "-C", str(root), "show", f"main:{path}"],
+        capture_output=True, text=True,
+    )
+    if show.returncode != 0:
+        raise HTTPException(status_code=404, detail="page not found")
+    content = show.stdout
     log = subprocess.run(
         ["git", "-C", str(root), "log", "--format=%h\t%ad\t%s", "--date=short", "-5",
          "main", "--", path],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True,
     ).stdout
     history = [
         dict(zip(["hash", "date", "subject"], line.split("\t", 2)))
@@ -55,7 +70,8 @@ def wiki_page(path: str = Query(...)):
 def wiki_search(q: str = Query(..., min_length=1)):
     out = subprocess.run(
         # -e로 q를 패턴으로 강제 — q가 "-O" 등으로 시작해도 옵션(페이저 실행 계열)으로 해석되지 않게
-        ["git", "-C", str(_root()), "grep", "-in", "--max-count=1", "-e", q, "main", "--", "*.md"],
+        # -F로 고정 문자열 검색 — 사용자 입력은 정규식이 아니라 리터럴로 취급
+        ["git", "-C", str(_root()), "grep", "-inF", "--max-count=1", "-e", q, "main", "--", "*.md"],
         capture_output=True, text=True,
     )
     results = []

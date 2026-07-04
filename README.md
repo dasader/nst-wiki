@@ -68,7 +68,7 @@ curl -X POST http://localhost:8000/api/v1/query -H "Content-Type: application/js
 ## 테스트
 
 ```bash
-cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --with google-genai --no-project python -m pytest tests -v
+cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --with qdrant-client --with google-genai --no-project python -m pytest tests -v
 ```
 
 ## 웹 UI
@@ -78,3 +78,4 @@ http://localhost:3000 — 자연어 질의(/), 위키 브라우저(/wiki), 데�
 
 NPM 연동: `nst-wiki.mem.photos` → 호스트 3000 (UI). 승인 대시보드·API를 외부에서 쓰려면
 별도 서브도메인 또는 경로로 호스트 8000을 추가 프록시하고 Access List를 걸 것.
+3000 포트 UI도 무인증 질의(/api/v1/query)가 프록시되므로 외부 공개 시 NPM Access List를 함께 걸 것.

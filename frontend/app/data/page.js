@@ -15,18 +15,23 @@ export default function DataExplorer() {
   const [q, setQ] = useState("");
   const limit = 50;
 
-  async function load(p = page) {
+  async function load(p = page, opts = {}) {
+    const col = opts.column ?? column, qq = opts.q ?? q;
+    const sb = "sortBy" in opts ? opts.sortBy : sortBy, od = opts.order ?? order;
     const params = new URLSearchParams({ page: p, limit });
-    if (sortBy) { params.set("sort_by", sortBy); params.set("order", order); }
-    if (column && q) { params.set("column", column); params.set("q", q); }
+    if (sb) { params.set("sort_by", sb); params.set("order", od); }
+    if (col && qq) { params.set("column", col); params.set("q", qq); }
     const r = await fetch(`/api/v1/data/${table}?${params}`);
     if (!r.ok) return;
     const b = await r.json();
     setRows(b.rows); setTotal(b.total); setPage(b.page);
   }
 
-  useEffect(() => { setSortBy(null); setColumn(""); setQ(""); setPage(1); }, [table]);
-  useEffect(() => { load(1); }, [table, sortBy, order]);   // eslint-disable-line
+  useEffect(() => {
+    setSortBy(null); setColumn(""); setQ("");
+    load(1, { column: "", q: "", sortBy: null });
+  }, [table]);   // eslint-disable-line
+  useEffect(() => { if (sortBy !== null) load(1); }, [sortBy, order]);   // eslint-disable-line
 
   const cols = rows.length ? Object.keys(rows[0]) : [];
   const maxPage = Math.max(1, Math.ceil(total / limit));

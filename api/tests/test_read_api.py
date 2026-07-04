@@ -48,6 +48,16 @@ def test_wiki_search_leading_dash_is_pattern(tmp_path, monkeypatch):
     assert r.json()["results"] == []
 
 
+def test_wiki_staged_only_not_visible(tmp_path, monkeypatch):
+    init_wiki(tmp_path)
+    monkeypatch.setenv("WIKI_REPO_PATH", str(tmp_path))
+    import wiki_ops
+    wiki_ops.stage_changes(tmp_path, "sX", {"tech/staged-only.md": "# 미승인"}, "m")
+    assert "tech/staged-only.md" not in client.get("/api/v1/wiki").json()["pages"]
+    r = client.get("/api/v1/wiki/page", params={"path": "tech/staged-only.md"})
+    assert r.status_code == 404
+
+
 def test_data_table_whitelist_and_query():
     assert client.get("/api/v1/data/ingest_tasks").status_code == 404  # 화이트리스트 밖
     assert client.get("/api/v1/data/technologies",
