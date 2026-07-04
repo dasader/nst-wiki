@@ -65,10 +65,11 @@ _UPSERT_SQL = {
             updated_at = NOW()
     """,
     "ministries": """
-        INSERT INTO ministries (name, abbreviation, wiki_page_path)
-        SELECT name, abbreviation, wiki_page_path
+        INSERT INTO ministries (name, abbreviation, wiki_page_path, source_id)
+        SELECT name, abbreviation, wiki_page_path, source_id
         FROM staging.ministries WHERE source_id = %s
-        ON CONFLICT (name) DO UPDATE SET abbreviation = EXCLUDED.abbreviation
+        ON CONFLICT (name) DO UPDATE SET
+            abbreviation = EXCLUDED.abbreviation, source_id = EXCLUDED.source_id
     """,
     "projects": """
         INSERT INTO projects (project_code, name, lead_ministry, budget_total,
