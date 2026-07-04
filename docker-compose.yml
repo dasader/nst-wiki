@@ -68,11 +68,12 @@ services:
       - qdrant-data:/qdrant/storage
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - API_URL=${FRONTEND_API_URL:-http://api:8000}
     ports: ["3000:3000"]              # NPM이 프록시할 포트
     restart: unless-stopped
-    environment:
-      - API_URL=http://api:8000
     depends_on:
       - api
 

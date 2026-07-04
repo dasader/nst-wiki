@@ -51,7 +51,7 @@ export default function QueryPage() {
           )}
           {res.sql && (
             <div className="card">
-              <b>SQL</b> ({res.sql_error ? `오류: ${res.sql_error}` : `${res.sql_rows.length}행`})
+              <b>SQL</b> ({res.sql_error ? `오류: ${res.sql_error}` : `${res.sql_rows?.length ?? 0}행`})
               <pre>{res.sql}</pre>
               {res.sql_rows?.length > 0 && <pre>{JSON.stringify(res.sql_rows, null, 2)}</pre>}
             </div>
