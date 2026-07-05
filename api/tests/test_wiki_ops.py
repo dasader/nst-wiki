@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 import pytest
@@ -111,3 +112,21 @@ def test_reject_deletes_branch(tmp_path):
 def test_approve_branch_idempotent_when_branch_missing(tmp_path):
     init_wiki(tmp_path)
     wiki_ops.approve_branch(tmp_path, "sX", "approve: 없음")  # 브랜치 없음 — 예외 없이 리턴
+
+
+def test_read_page_asof(tmp_path):
+    init_wiki(tmp_path)
+    rel = "tech/asof.md"
+
+    def _commit(content, date):
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+        env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+        subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "c"],
+                       env=env, check=True, capture_output=True)
+
+    _commit("v1", "2026-01-01T00:00:00")
+    _commit("v2", "2026-06-01T00:00:00")
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2026-03-01") == "v1"   # v1과 v2 사이
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2026-07-01") == "v2"   # v2 이후
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2025-01-01") is None   # 생성 전

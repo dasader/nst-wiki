@@ -75,10 +75,15 @@ def wiki_list():
 
 
 @router.get("/wiki/page")
-def wiki_page(path: str = Query(...)):
+def wiki_page(path: str = Query(...), as_of: str | None = Query(None)):
     root = _root()
-    if path not in _main_pages(root):
+    if path not in _main_pages(root):  # 현재 main 기준 화이트리스트(경로 이탈 차단 겸용)
         raise HTTPException(status_code=404, detail="page not found")
+    if as_of:  # 시점 조회: 해당 날짜 이하 마지막 커밋의 내용
+        content = wiki_ops.read_page_asof(root, path, as_of)
+        if content is None:
+            raise HTTPException(status_code=404, detail="page not found at that date")
+        return {"path": path, "content_md": content, "as_of": as_of}
     show = subprocess.run(
         ["git", "-C", str(root), "show", f"main:{path}"],
         capture_output=True, text=True,

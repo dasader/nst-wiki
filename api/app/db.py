@@ -64,7 +64,7 @@ def save_results(task_id: str, results: dict) -> None:
         )
 
 
-STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries"]
+STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries", "budget_history"]
 
 _UPSERT_SQL = {
     "technologies": """
@@ -110,12 +110,28 @@ _UPSERT_SQL = {
                end_year, status, source_id
         FROM staging.projects WHERE source_id = %s AND project_code IS NULL
     """,
+    # 교차 소스 중복 방지: 같은 event_date + 정규화(공백·가운뎃점 제거, 소문자) 제목이 이미
+    # canonical에 있으면 skip(먼저 적재한 소스가 우선). ponytail: casefold는 lower()로 근사
+    # (한글은 대소문자 없음). 한 배치 내 자체 중복은 서로 다른 소스에서만 생긴다는 전제라 미처리.
     "policy_events": """
         INSERT INTO policy_events (event_date, event_type, title, description,
                                    affected_fields, wiki_page_path, source_id)
-        SELECT event_date, event_type, title, description, affected_fields,
-               wiki_page_path, source_id
-        FROM staging.policy_events WHERE source_id = %s
+        SELECT s.event_date, s.event_type, s.title, s.description, s.affected_fields,
+               s.wiki_page_path, s.source_id
+        FROM staging.policy_events s WHERE s.source_id = %s
+          AND NOT EXISTS (
+            SELECT 1 FROM policy_events p
+            WHERE p.event_date = s.event_date
+              AND lower(regexp_replace(p.title, '[[:space:]·ㆍ‧]', '', 'g'))
+                = lower(regexp_replace(s.title, '[[:space:]·ㆍ‧]', '', 'g'))
+          )
+    """,
+    # project_id는 문서 표에서 직접 얻을 수 없어 NULL — map_tables 주석 참고
+    "budget_history": """
+        INSERT INTO budget_history (fiscal_year, amount, source_id)
+        SELECT fiscal_year, amount, source_id
+        FROM staging.budget_history
+        WHERE source_id = %s AND fiscal_year IS NOT NULL AND amount IS NOT NULL
     """,
 }
 

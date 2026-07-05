@@ -15,8 +15,13 @@ CORE_TABLES = {
                  "start_year", "end_year", "status"],
     "policy_events": ["event_date", "event_type", "title", "description"],
     "ministries": ["name", "abbreviation"],
+    # ponytail: project_code 컬럼은 staging.budget_history에 없고(마이그레이션 금지 상태) 승인 시
+    # project_id로 해소할 자리가 없어 fiscal_year+amount만 적재, project_id는 NULL로 둔다.
+    # project별 예산 연결은 staging.budget_history.project_code 컬럼 추가(마이그레이션) 후 upsert JOIN으로.
+    "budget_history": ["fiscal_year", "amount"],
 }
-INT_COLS = {"trl_level", "budget_total", "budget_annual", "start_year", "end_year"}
+INT_COLS = {"trl_level", "budget_total", "budget_annual", "start_year", "end_year",
+            "fiscal_year", "amount"}
 
 # ponytail: 정책문서 표의 선행 서식(목록 기호·항목 번호·<n>) 제거 휴리스틱 —
 # 숫자+공백/구두점 패턴만 제거하므로 "5G"처럼 숫자로 시작하는 명칭은 보존.
@@ -36,6 +41,18 @@ FIELD_VOCAB = [
 _FIELD_NORM = re.compile(r"[\s·ㆍ‧]")
 _FIELD_LOOKUP = {_FIELD_NORM.sub("", f): f for f in FIELD_VOCAB}
 
+# 세부주제·별칭 → 12분야. 매핑이 명확한 것만. 애매한 태그(연구데이터·국가전략기술)는 넣지 않는다.
+_FIELD_SYNONYMS = {
+    "6G": "차세대통신", "오픈랜": "차세대통신", "오픈RAN": "차세대통신",
+    "자율주행": "첨단모빌리티", "자율주행시스템": "첨단모빌리티", "UAM": "첨단모빌리티",
+    "전기차": "첨단모빌리티",
+    "로봇": "첨단로봇·제조",
+    "반도체": "반도체·디스플레이", "HBM": "반도체·디스플레이", "디스플레이": "반도체·디스플레이",
+    "양자컴퓨팅": "양자", "양자컴퓨터": "양자",
+}
+# 조회 키는 표기 정규화(공백·가운뎃점 제거) 후 casefold — "6g"·"hbm"·"uam" 대소문자 무관 매칭
+_SYN_LOOKUP = {_FIELD_NORM.sub("", k).casefold(): v for k, v in _FIELD_SYNONYMS.items()}
+
 
 def _clean_str(s: str) -> str:
     s = s.strip()
@@ -47,7 +64,10 @@ def _clean_str(s: str) -> str:
 
 
 def canon_field(s: str) -> str:
-    return _FIELD_LOOKUP.get(_FIELD_NORM.sub("", s), s)
+    norm = _FIELD_NORM.sub("", s)
+    if norm in _FIELD_LOOKUP:            # 12분야 정규 표기 우선
+        return _FIELD_LOOKUP[norm]
+    return _SYN_LOOKUP.get(norm.casefold(), s)  # 세부주제 별칭, 없으면 원문 그대로
 
 
 MAP_SCHEMA = {

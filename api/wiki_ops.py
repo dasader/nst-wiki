@@ -36,6 +36,19 @@ def read_page(root: Path, rel: str) -> str | None:
     return p.read_text(encoding="utf-8") if p.is_file() else None
 
 
+def read_page_asof(root: Path, rel: str, iso_date: str) -> str | None:
+    """iso_date(YYYY-MM-DD) 이하 마지막 main 커밋 시점의 페이지 내용. 그때 없으면 None.
+    구조화 데이터는 이력 테이블이 없어 as-of 대상 밖 — 위키(git 이력)만 시점 조회 가능."""
+    commit = _git(root, "rev-list", "-1", f"--before={iso_date}", "main").strip()
+    if not commit:
+        return None  # 그 날짜 이전 커밋 없음 (페이지 생성 전)
+    show = subprocess.run(
+        ["git", "-C", str(root), "show", f"{commit}:{rel}"],
+        capture_output=True, text=True,
+    )
+    return show.stdout if show.returncode == 0 else None
+
+
 def rebuild_index(root: Path) -> str:
     lines = ["# NST Wiki 색인", "",
              "국가전략기술 정책 지식 위키. 페이지가 생성·갱신되면 이 색인도 함께 갱신한다.", ""]

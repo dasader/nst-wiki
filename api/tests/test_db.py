@@ -114,6 +114,55 @@ def test_upsert_staged_dedupes_batch_duplicates():
             conn.execute("DELETE FROM staging.technologies WHERE source_id = %s", (source_id,))
 
 
+def test_upsert_policy_events_skips_cross_source_duplicate():
+    s1, s2 = str(uuid.uuid4()), str(uuid.uuid4())
+    tok = uuid.uuid4().hex[:8]
+    t1 = f"국가전략기술 특별법 시행 {tok}"       # 소스1 표기
+    t2 = f"국가전략기술·특별법·시행·{tok}"       # 소스2: 공백↔가운뎃점 차이만 → 동일 이벤트
+
+    def _stage_event(sid, title):
+        with db.connect() as conn:
+            conn.execute(
+                "INSERT INTO staging.policy_events (event_date, event_type, title, source_id) "
+                "VALUES (%s, %s, %s, %s)", ("2024-01-01", "시행", title, sid))
+
+    _stage_event(s1, t1)
+    _stage_event(s2, t2)
+    try:
+        assert db.upsert_staged(s1)["policy_events"] == 1        # 첫 소스 적재
+        assert db.upsert_staged(s2)["policy_events"] == 0        # 중복 → skip
+        with db.connect() as conn:
+            rows = conn.execute(
+                "SELECT source_id FROM policy_events WHERE title IN (%s, %s)", (t1, t2)
+            ).fetchall()
+        assert len(rows) == 1 and rows[0]["source_id"] == s1     # 먼저 쓴 소스 우선
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM policy_events WHERE title IN (%s, %s)", (t1, t2))
+            conn.execute("DELETE FROM staging.policy_events WHERE source_id IN (%s, %s)", (s1, s2))
+
+
+def test_upsert_staged_budget_history():
+    source_id = str(uuid.uuid4())
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO staging.budget_history (fiscal_year, amount, source_id) "
+            "VALUES (%s, %s, %s)", (2099, 12345, source_id))
+    try:
+        counts = db.upsert_staged(source_id)
+        assert counts["budget_history"] == 1
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT fiscal_year, amount, project_id FROM budget_history WHERE source_id = %s",
+                (source_id,)).fetchone()
+        assert (row["fiscal_year"], row["amount"], row["project_id"]) == (2099, 12345, None)
+        assert db.list_staged(source_id)["budget_history"] == []  # staging 비워짐
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM budget_history WHERE source_id = %s", (source_id,))
+            conn.execute("DELETE FROM staging.budget_history WHERE source_id = %s", (source_id,))
+
+
 def test_discard_staged_clears():
     source_id = str(uuid.uuid4())
     _stage_tech(source_id, "폐기기술")
