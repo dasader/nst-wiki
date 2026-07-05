@@ -92,3 +92,14 @@ def test_coerce_strips_list_markers():
     assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
     assert mt._coerce("name", "⑩ 차세대 이차전지 소재·셀") == "차세대 이차전지 소재·셀"  # 원문자 번호
     assert mt._coerce("trl_level", "7") == 7  # INT 경로 불변
+
+
+def test_coerce_year_forms():
+    assert mt._coerce("start_year", "'24") == 2024        # 2자리 약식
+    assert mt._coerce("end_year", "'28") == 2028
+    assert mt._coerce("start_year", "'24~'28") == 2024    # 기간 → 첫 연도
+    assert mt._coerce("end_year", "'24~'28") == 2028      # 기간 → 끝 연도
+    assert mt._coerce("start_year", "2024-2028") == 2024
+    assert mt._coerce("start_year", "2024") == 2024
+    assert mt._coerce("end_year", "미정") is None
+    assert mt._coerce("budget_total", "30,000") == 30000  # 예산 정수 경로 불변

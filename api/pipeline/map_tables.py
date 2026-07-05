@@ -78,9 +78,31 @@ PROMPT = """한국 정책문서에서 추출한 표를 DB 스키마에 매핑하
 대응하지 않으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
 
 
+# 연도 토큰: 4자리(2024) 또는 2자리 약식('24). 4자리 우선 매칭.
+_YEAR_RE = re.compile(r"'?(\d{4}|\d{2})")
+
+
+def _years(val) -> list[int]:
+    """'24~'28, 2024-2028, '24 등에서 연도를 뽑아 4자리로. 1990~2100만."""
+    out = []
+    for t in _YEAR_RE.findall(str(val)):
+        y = int(t)
+        y = y + 2000 if y < 100 else y
+        if 1990 <= y <= 2100:
+            out.append(y)
+    return out
+
+
 def _coerce(col: str, val):
     if val is None or val == "":
         return None
+    # ponytail: 기간 문자열은 start_year→첫 연도, end_year→끝 연도. 단일 기간 컬럼이 두
+    # 연도를 다 담아도 매핑이 1:1이라 한쪽만 채워짐 — 행 단위 분리는 필요해지면 추가.
+    if col in ("start_year", "end_year"):
+        ys = _years(val)
+        if not ys:
+            return None
+        return ys[0] if col == "start_year" else ys[-1]
     if col in INT_COLS:
         try:
             return int(float(str(val).replace(",", "")))
