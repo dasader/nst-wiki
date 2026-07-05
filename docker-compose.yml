@@ -25,7 +25,9 @@ services:
 
   ingest-worker:
     build: ./api
-    command: celery -A tasks worker --concurrency=2 --loglevel=info
+    # concurrency=1: BGE-M3(~2.3GB/프로세스) 단일 로드 — prefork 이중 로드 방지, 모델·OCR 레이스 원천 차단.
+    # 개인용은 문서를 순차 처리하므로 처리량 손실 없음. 처리량 필요 시 전용 embed 큐 검토.
+    command: celery -A tasks worker --concurrency=1 --loglevel=info
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
