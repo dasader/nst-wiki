@@ -62,6 +62,28 @@ def test_wiki_search_leading_dash_is_pattern(tmp_path, monkeypatch):
     assert r.json()["results"] == []
 
 
+def test_wiki_search_operators(tmp_path, monkeypatch):
+    init_wiki(tmp_path)
+    monkeypatch.setenv("WIKI_REPO_PATH", str(tmp_path))
+    import wiki_ops
+    wiki_ops.stage_changes(
+        tmp_path, "sT", {"tech/op-test.md": "---\ntitle: 반도체 개요\n---\n\n반도체 예산 이야기"}, "m")
+    wiki_ops.approve_branch(tmp_path, "sT", "approve: m")
+
+    # 목록이 프론트매터 title을 함께 반환
+    assert client.get("/api/v1/wiki").json()["titles"]["tech/op-test.md"] == "반도체 개요"
+
+    def paths(q):
+        return [x["path"] for x in client.get("/api/v1/wiki/search", params={"q": q}).json()["results"]]
+
+    assert "tech/op-test.md" in paths("반도체 예산")        # AND: 두 낱말 모두 포함
+    assert paths("반도체 없는말") == []                       # AND: 한 낱말만 없어도 제외
+    assert "tech/op-test.md" in paths("반도체 | 없는말")      # OR: 하나만 맞아도 포함
+    # 검색 결과에도 title이 실린다
+    hits = client.get("/api/v1/wiki/search", params={"q": "예산"}).json()["results"]
+    assert any(x.get("title") == "반도체 개요" for x in hits)
+
+
 def test_wiki_staged_only_not_visible(tmp_path, monkeypatch):
     init_wiki(tmp_path)
     monkeypatch.setenv("WIKI_REPO_PATH", str(tmp_path))
