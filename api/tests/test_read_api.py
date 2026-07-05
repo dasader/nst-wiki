@@ -32,6 +32,18 @@ def test_wiki_list_and_page(tmp_path, monkeypatch):
     assert client.get("/api/v1/wiki/page", params={"path": "../etc/passwd"}).status_code == 404
 
 
+def test_wiki_page_asof(tmp_path, monkeypatch):
+    _wiki_with_page(tmp_path, monkeypatch)
+    p = "tech/read-test.md"
+    # 미래 시점 → 현재 내용 (as_of 응답 형태)
+    r = client.get("/api/v1/wiki/page", params={"path": p, "as_of": "2099-01-01"})
+    assert r.status_code == 200
+    assert r.json()["content_md"].startswith("# 읽기") and r.json()["as_of"] == "2099-01-01"
+    # 페이지 생성(커밋) 이전 시점 → 404
+    assert client.get("/api/v1/wiki/page",
+                      params={"path": p, "as_of": "1970-01-01"}).status_code == 404
+
+
 def test_wiki_search(tmp_path, monkeypatch):
     _wiki_with_page(tmp_path, monkeypatch)
     r = client.get("/api/v1/wiki/search", params={"q": "검색가능한"})

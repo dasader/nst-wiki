@@ -86,7 +86,6 @@ def test_coerce_strips_list_markers():
     assert mt._coerce("field", "<10> 차세대 통신") == "차세대통신"
     assert mt._coerce("field", "반도체· 디스 플레이") == "반도체·디스플레이"
     assert mt.canon_field("우주항공 해양") == "우주항공·해양"  # ·대신 공백도 정규화
-    assert mt.canon_field("반도체") == "반도체"  # 부분 표기는 그대로 (오매핑 방지)
     # · 주변 잘못된 공백은 제거하되 ·는 보존 (name 등 일반 문자열)
     assert mt._coerce("name", "우주항공 ·해양") == "우주항공·해양"
     assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"
@@ -94,6 +93,46 @@ def test_coerce_strips_list_markers():
     assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
     assert mt._coerce("name", "⑩ 차세대 이차전지 소재·셀") == "차세대 이차전지 소재·셀"  # 원문자 번호
     assert mt._coerce("trl_level", "7") == 7  # INT 경로 불변
+
+
+def test_canon_field_synonyms():
+    # 세부주제 별칭 → 12분야 (대소문자 무관)
+    assert mt.canon_field("6G") == "차세대통신"
+    assert mt.canon_field("오픈랜") == "차세대통신"
+    assert mt.canon_field("자율주행시스템") == "첨단모빌리티"
+    assert mt.canon_field("UAM") == "첨단모빌리티"
+    assert mt.canon_field("로봇") == "첨단로봇·제조"
+    assert mt.canon_field("반도체") == "반도체·디스플레이"  # 단독 반도체 → 정규 분야
+    assert mt.canon_field("HBM") == "반도체·디스플레이"
+    assert mt.canon_field("양자컴퓨팅") == "양자"
+    # 12분야 정규 표기는 그대로 통과
+    assert mt.canon_field("첨단로봇·제조") == "첨단로봇·제조"
+    # 애매·비별칭 태그는 원문 그대로 (오매핑 방지)
+    assert mt.canon_field("연구데이터") == "연구데이터"
+    assert mt.canon_field("국가전략기술") == "국가전략기술"
+
+
+def test_budget_table_stages_rows(tmp_path, monkeypatch):
+    source_id = str(uuid.uuid4())
+    _write_table(tmp_path, {"table_title": "연도별 예산", "columns": ["연도", "예산(백만원)"],
+                            "rows": [["2024", "30,000"], ["2025", "45,000"]]})
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+        "table": "budget_history", "confidence": 0.95,
+        "column_mapping": [{"src": "연도", "dst": "fiscal_year"},
+                           {"src": "예산(백만원)", "dst": "amount"}],
+    })
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out == {"staged": [{"table": "budget_history", "rows": 2}], "needs_review": 0}
+        with db.connect() as conn:
+            rows = conn.execute(
+                "SELECT fiscal_year, amount FROM staging.budget_history "
+                "WHERE source_id = %s ORDER BY fiscal_year", (source_id,)
+            ).fetchall()
+        assert [(r["fiscal_year"], r["amount"]) for r in rows] == [(2024, 30000), (2025, 45000)]
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM staging.budget_history WHERE source_id = %s", (source_id,))
 
 
 def test_coerce_year_forms():
