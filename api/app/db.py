@@ -133,6 +133,21 @@ def upsert_staged(source_id: str) -> dict:
     return counts
 
 
+def drop_staged_rows(source_id: str, exclude: dict) -> int:
+    """승인 전 사람이 제외한 staging 행을 삭제한다. 표 오매핑을 걸러내는 용도."""
+    n = 0
+    with connect() as conn:
+        for t, ids in (exclude or {}).items():
+            if t not in STAGED_TABLES or not ids:
+                continue  # 화이트리스트 밖 테이블명은 무시 (SQL 주입 방지)
+            cur = conn.execute(
+                f"DELETE FROM staging.{t} WHERE source_id = %s AND id = ANY(%s)",
+                (source_id, [int(i) for i in ids]),
+            )
+            n += cur.rowcount
+    return n
+
+
 def discard_staged(source_id: str) -> None:
     with connect() as conn:
         for t in STAGED_TABLES:

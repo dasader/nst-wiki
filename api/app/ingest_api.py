@@ -19,6 +19,7 @@ ALLOWED_EXTS = {".pdf", ".md", ".xlsx"}
 
 class ApproveBody(BaseModel):
     contradiction_resolutions: dict[str, str] = {}
+    exclude: dict[str, list[int]] = {}  # {staging 테이블명: 승인 제외할 행 id 목록}
 
 
 def _wiki_root() -> Path:
@@ -72,6 +73,8 @@ def _claim(task_id: str, new_status: str) -> dict:
 def approve(task_id: str, body: ApproveBody | None = None):
     task = _claim(task_id, "approved")
     try:
+        if body and body.exclude:
+            db.drop_staged_rows(task["source_id"], body.exclude)
         counts = db.upsert_staged(task["source_id"])
         if task["branch_name"]:
             resolutions = body.contradiction_resolutions if body else {}
