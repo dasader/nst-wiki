@@ -5,6 +5,8 @@ WORKDIR /app
 ENV PYTHONPATH=/app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# EasyOCR ko/en 모델을 빌드 시 사전 다운로드 → 런타임 동시 다운로드 레이스(/root/.EasyOCR/model/temp.zip) 방지
+RUN python -c "import easyocr; easyocr.Reader(['ko','en'], gpu=False)"
 COPY app ./app
 COPY pipeline ./pipeline
 COPY scripts ./scripts
