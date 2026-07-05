@@ -16,7 +16,7 @@ def test_extract_stages_dated_events(monkeypatch):
     source_id = str(uuid.uuid4())
     monkeypatch.setattr(events.llm, "generate", lambda *a, **k: {"events": [
         {"event_date": "2024-02", "event_type": "고시", "title": "국가전략기술 확정 고시",
-         "description": "12대 분야 확정", "affected_fields": ["반도체·디스플레이"]},
+         "description": "12대 분야 확정", "affected_fields": ["첨단 모빌리티", "반도체·디스플레이"]},
         {"event_date": "2022", "event_type": "선정", "title": "국가전략기술 선정",
          "description": "", "affected_fields": []},
         {"event_date": "미상", "event_type": "기타", "title": "날짜없음 → 제외"},  # 드롭
@@ -32,7 +32,8 @@ def test_extract_stages_dated_events(monkeypatch):
             ).fetchall()
         assert rows[0]["event_date"] == "2022-01-01"  # 연도만 → 01-01
         assert rows[1]["event_date"] == "2024-02-01"  # 연월 → 01일
-        assert rows[1]["affected_fields"] == ["반도체·디스플레이"]
+        # 분야는 12대 정규 표기로 canonicalize: "첨단 모빌리티" → "첨단모빌리티"
+        assert rows[1]["affected_fields"] == ["첨단모빌리티", "반도체·디스플레이"]
     finally:
         _cleanup(source_id)
 

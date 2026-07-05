@@ -44,7 +44,7 @@ def _clean_str(s: str) -> str:
     return _MIDDOT_RE.sub("·", s).strip()
 
 
-def _canon_field(s: str) -> str:
+def canon_field(s: str) -> str:
     return _FIELD_LOOKUP.get(re.sub(r"\s", "", s), s)
 
 
@@ -109,7 +109,7 @@ def _coerce(col: str, val):
         except ValueError:
             return None
     s = _clean_str(str(val))
-    return _canon_field(s) if col == "field" else s
+    return canon_field(s) if col == "field" else s
 
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
