@@ -32,7 +32,9 @@ FIELD_VOCAB = [
     "첨단바이오", "우주항공·해양", "수소", "사이버보안",
     "인공지능", "차세대통신", "첨단로봇·제조", "양자",
 ]
-_FIELD_LOOKUP = {re.sub(r"\s", "", f): f for f in FIELD_VOCAB}
+# 매칭 시 공백·가운뎃점 계열을 모두 제거 → "우주항공 해양"(·대신 공백)도 정규 표기로 매핑
+_FIELD_NORM = re.compile(r"[\s·ㆍ‧]")
+_FIELD_LOOKUP = {_FIELD_NORM.sub("", f): f for f in FIELD_VOCAB}
 
 
 def _clean_str(s: str) -> str:
@@ -44,8 +46,8 @@ def _clean_str(s: str) -> str:
     return _MIDDOT_RE.sub("·", s).strip()
 
 
-def _canon_field(s: str) -> str:
-    return _FIELD_LOOKUP.get(re.sub(r"\s", "", s), s)
+def canon_field(s: str) -> str:
+    return _FIELD_LOOKUP.get(_FIELD_NORM.sub("", s), s)
 
 
 MAP_SCHEMA = {
@@ -109,7 +111,7 @@ def _coerce(col: str, val):
         except ValueError:
             return None
     s = _clean_str(str(val))
-    return _canon_field(s) if col == "field" else s
+    return canon_field(s) if col == "field" else s
 
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:

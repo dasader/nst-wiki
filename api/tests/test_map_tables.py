@@ -85,6 +85,8 @@ def test_coerce_strips_list_markers():
     # field는 12대 분야 정규 표기로 정규화 (공백 무시 매칭 → 깨진 내부 공백 복구)
     assert mt._coerce("field", "<10> 차세대 통신") == "차세대통신"
     assert mt._coerce("field", "반도체· 디스 플레이") == "반도체·디스플레이"
+    assert mt.canon_field("우주항공 해양") == "우주항공·해양"  # ·대신 공백도 정규화
+    assert mt.canon_field("반도체") == "반도체"  # 부분 표기는 그대로 (오매핑 방지)
     # · 주변 잘못된 공백은 제거하되 ·는 보존 (name 등 일반 문자열)
     assert mt._coerce("name", "우주항공 ·해양") == "우주항공·해양"
     assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"

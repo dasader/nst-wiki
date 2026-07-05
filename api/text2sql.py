@@ -13,7 +13,8 @@ SCHEMA_DESC = """
 - tech_project_mapping(technology_id, project_id, relevance_score): 기술-사업 매핑
 - budget_history(id, project_id, fiscal_year, amount): 연도별 예산
 - policy_events(id, event_date, event_type, title, description, affected_fields): 정책 이벤트
-  (affected_fields는 TEXT[] 배열 — 분야로 거를 땐 LIKE 말고 '분야명' = ANY(affected_fields))
+  (affected_fields는 TEXT[] 배열 — 분야로 거를 땐 LIKE 말고 '분야명' = ANY(affected_fields).
+  분야명에 ·가 있으면 쪼개지 말고 통째로: '우주항공·해양' = ANY(affected_fields))
 - ministries(id, name, abbreviation): 부처
 주의: technologies.lead_ministry, projects.lead_ministry는 부처명이 그대로 담긴 텍스트다
 (ministries.id로 조인하는 FK 아님). 부처로 거를 땐 lead_ministry LIKE '%부처명%'로 비교하라.

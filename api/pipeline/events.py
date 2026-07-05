@@ -5,6 +5,7 @@ from datetime import date
 
 import llm
 from app import db
+from pipeline.map_tables import canon_field
 
 EVENTS_SCHEMA = {
     "type": "object",
@@ -76,12 +77,13 @@ def extract_and_stage_events(narrative_texts: list[str], source_id: str) -> dict
             title = (ev.get("title") or "").strip()
             if not d or not title:
                 continue
+            fields = [canon_field(f) for f in ev.get("affected_fields") or []]  # 12분야 정규 표기
             conn.execute(
                 "INSERT INTO staging.policy_events (event_date, event_type, title, "
                 "description, affected_fields, source_id) VALUES (%s, %s, %s, %s, %s, %s)",
                 (d, (ev.get("event_type") or "").strip(), title,
                  (ev.get("description") or "").strip(),
-                 ev.get("affected_fields") or None, source_id),
+                 fields or None, source_id),
             )
             n += 1
     return {"staged": n}
