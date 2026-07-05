@@ -40,6 +40,31 @@ def test_compile_narrative_records_contradictions(tmp_path, monkeypatch):
     assert "분야 수 불일치" in out["files"]["contradictions/log.md"]
 
 
+def test_contradiction_lands_in_page_frontmatter(tmp_path, monkeypatch):
+    init_wiki(tmp_path)
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[{"path": "tech/a.md", "action": "update", "title": "A"}],
+        merged={"content": "---\ntitle: A\n---\n\n본문", "contradictions": [
+            {"summary": "분야 수 불일치", "existing": "12개", "new": "10개"}
+        ]},
+    ))
+    out = narrative.compile_narrative(tmp_path, "src5", {"title": "문서"}, ["서사"])
+    page = out["files"]["tech/a.md"]
+    assert "unresolved_contradictions:" in page.split("---")[1]  # 프론트매터 안
+    assert "분야 수 불일치" in page
+    assert page.endswith("본문")  # 본문 보존
+
+
+def test_contradiction_frontmatter_idempotent(tmp_path):
+    once = narrative._inject_contradictions(
+        "---\ntitle: A\n---\n\n본문", [{"summary": "s", "existing": "e", "new": "n"}])
+    twice = narrative._inject_contradictions(
+        once, [{"summary": "s", "existing": "e", "new": "n"}])
+    assert once.count("unresolved_contradictions:") == 1
+    assert twice.count("unresolved_contradictions:") == 1
+    assert twice.count('- "s') == 1  # 재병합해도 중복 안 됨
+
+
 def test_compile_narrative_rejects_bad_paths(tmp_path, monkeypatch):
     init_wiki(tmp_path)
     monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
