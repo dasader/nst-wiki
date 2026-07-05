@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Markdown from "./Markdown";
 
 export default function QueryPage() {
   const [q, setQ] = useState("");
@@ -39,7 +40,7 @@ export default function QueryPage() {
       {err && <div className="card" style={{ color: "#b3403a" }}>{err}</div>}
       {res && (
         <div>
-          <div className="card" style={{ whiteSpace: "pre-wrap" }}>{res.answer}</div>
+          <div className="card"><Markdown>{res.answer}</Markdown></div>
           {res.citations?.length > 0 && (
             <div className="card">근거:{" "}
               {res.citations.map((c) => (

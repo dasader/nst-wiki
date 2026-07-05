@@ -1,8 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "../../Markdown";
 
 function splitFrontmatter(md) {
   const m = md.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -38,7 +37,7 @@ function Viewer() {
       <h1>{page.path}</h1>
       {front && <details className="card"><summary>메타데이터</summary><pre>{front}</pre></details>}
       <div className="card">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{linkifyWiki(body)}</ReactMarkdown>
+        <Markdown>{linkifyWiki(body)}</Markdown>
       </div>
       <div className="card">
         <b>변경 이력</b>

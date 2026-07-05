@@ -22,6 +22,16 @@ INT_COLS = {"trl_level", "budget_total", "budget_annual", "start_year", "end_yea
 # 숫자+공백/구두점 패턴만 제거하므로 "5G"처럼 숫자로 시작하는 명칭은 보존.
 # 새 서식 유형이 나타나면 패턴 추가로 대응 (완전한 파서는 YAGNI)
 _PREFIX_RE = re.compile(r"^(?:[◯○●◦□■▷▶·•]\s*|[①-⑳㉑-㉟]\s*|\d+[.)]\s*|\d+\s+|<\d+>\s*|\(\d+\)\s*|[-–]\s+)")
+# PDF 추출 시 가운뎃점(·) 주변에 끼어드는 잘못된 공백 제거. ·는 정당한 구분자이므로 보존.
+_MIDDOT_RE = re.compile(r"\s*·\s*")
+
+# 국가전략기술 12대 분야 정규 표기. field 값을 여기에 맞춰 정규화(공백 무시 매칭).
+FIELD_VOCAB = [
+    "반도체·디스플레이", "이차전지", "첨단모빌리티", "차세대원자력",
+    "첨단바이오", "우주항공·해양", "수소", "사이버보안",
+    "인공지능", "차세대통신", "첨단로봇·제조", "양자",
+]
+_FIELD_LOOKUP = {re.sub(r"\s", "", f): f for f in FIELD_VOCAB}
 
 
 def _clean_str(s: str) -> str:
@@ -30,7 +40,11 @@ def _clean_str(s: str) -> str:
     while prev != s:
         prev = s
         s = _PREFIX_RE.sub("", s).strip()
-    return s
+    return _MIDDOT_RE.sub("·", s)
+
+
+def _canon_field(s: str) -> str:
+    return _FIELD_LOOKUP.get(re.sub(r"\s", "", s), s)
 
 
 MAP_SCHEMA = {
@@ -71,7 +85,8 @@ def _coerce(col: str, val):
             return int(float(str(val).replace(",", "")))
         except ValueError:
             return None
-    return _clean_str(str(val))
+    s = _clean_str(str(val))
+    return _canon_field(s) if col == "field" else s
 
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
