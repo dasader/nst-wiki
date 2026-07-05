@@ -2,6 +2,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Markdown from "../../Markdown";
+import { linkifyWiki } from "../../links";
 
 function splitFrontmatter(md) {
   const m = md.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -16,14 +17,6 @@ const TYPE_LABELS = {
   synthesis: "종합 분석", source_summary: "소스 요약",
 };
 
-function linkifyWiki(md) {
-  // [[tech/foo]] → 내부 링크, [[data:...]] → 데이터 탐색기 링크
-  return md
-    .replace(/\[\[data:([^\]]+)\]\]/g, (_, ref) => `[data:${ref}](/data)`)
-    .replace(/\[\[([^\]:]+)\]\]/g, (_, p) =>
-      `[${p}](/wiki/view?path=${encodeURIComponent(p.endsWith(".md") ? p : p + ".md")})`);
-}
-
 function Viewer() {
   const params = useSearchParams();
   const path = params.get("path");
@@ -32,6 +25,13 @@ function Viewer() {
   const backLabel = fromQ ? `← ‘${fromQ}’ 검색 결과로` : "← 위키 목록";
   const [page, setPage] = useState(null);
   const [err, setErr] = useState(null);
+  const [validPaths, setValidPaths] = useState(null);   // 링크 유효성 검사용 실존 페이지 Set
+
+  useEffect(() => {
+    fetch("/api/v1/wiki")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => b && setValidPaths(new Set(b.pages)));
+  }, []);
 
   useEffect(() => {
     if (!path) return;
@@ -61,7 +61,7 @@ function Viewer() {
       <p className="muted" style={{ margin: "0 0 20px", fontSize: "0.85rem", fontFamily: "var(--mono)" }}>{page.path}</p>
 
       <div className="card">
-        <Markdown>{linkifyWiki(body)}</Markdown>
+        <Markdown>{linkifyWiki(body, validPaths)}</Markdown>
       </div>
 
       {front && (

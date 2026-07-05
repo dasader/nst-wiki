@@ -77,6 +77,7 @@ function WikiListInner() {
       </form>
       <p className="search-hint">
         <b>공백</b> = 모두 포함(AND) · <b>|</b> = 둘 중 하나(OR) · <b>&quot;따옴표&quot;</b> = 정확한 구문
+        {" · "}<a href="/wiki/audit">링크 감사</a>
       </p>
 
       {urlQ && (

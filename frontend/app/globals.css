@@ -181,6 +181,26 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 a.chip:hover { background: #d7e9e9; }
 .chip.neutral { background: var(--surface-2); color: var(--ink-2); border-color: var(--line); }
 
+/* 실존하지 않는 링크 표식 (linkifyWiki가 #dead-page/#dead-data로 표시) */
+.dead-link {
+  color: var(--danger);
+  text-decoration: line-through;
+  text-decoration-color: rgba(178, 58, 58, 0.5);
+  cursor: not-allowed;
+}
+.dead-tag {
+  margin-left: 5px;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: 999px;
+  text-decoration: none;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 /* ── 카드 ────────────────────────────────────── */
 .card {
   background: var(--surface);
