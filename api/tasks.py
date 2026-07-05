@@ -9,7 +9,7 @@ from app import db
 celery = Celery("nst_wiki", broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
 
 
-@celery.task(name="ingest.run", time_limit=1800)
+@celery.task(name="ingest.run", time_limit=3600)  # 대형 스캔본 OCR 감안 (실측: 14MB 문서)
 def run_ingest(task_id: str) -> None:
     task = db.get_task(task_id)
     db.set_status(task_id, "parsing")
