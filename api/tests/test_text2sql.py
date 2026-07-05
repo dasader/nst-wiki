@@ -51,6 +51,14 @@ def test_run_data_query_executes(monkeypatch):
     assert out["rows"] == [{"one": 1}]
 
 
+def test_run_data_query_array_filter(monkeypatch):
+    # affected_fields는 TEXT[] — = ANY(...)가 실제로 실행되는지 (LIKE는 타입 오류)
+    monkeypatch.setattr(text2sql.llm, "generate", lambda *a, **k: {
+        "sql": "SELECT count(*) AS n FROM policy_events WHERE '인공지능' = ANY(affected_fields)"})
+    out = text2sql.run_data_query("인공지능 관련 이벤트")
+    assert out["error"] is None
+
+
 def test_run_data_query_blocks_write(monkeypatch):
     monkeypatch.setattr(text2sql.llm, "generate",
                         lambda *a, **k: {"sql": "DELETE FROM technologies"})
