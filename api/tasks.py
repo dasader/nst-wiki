@@ -45,6 +45,17 @@ def embed_pages(paths: list[str]) -> int:
     return n
 
 
+@celery.task(name="embed.unindex")
+def unindex_pages(paths: list[str]) -> int:
+    """삭제된 페이지의 Qdrant 포인트를 제거한다 (소스 삭제 시). 모델 로드 불필요 — 삭제만."""
+    import embeddings
+
+    client = embeddings.qdrant()
+    for p in paths:
+        embeddings.delete_page(client, p)
+    return len(paths)
+
+
 @celery.task(name="embed.reindex", time_limit=3600)
 def reindex_all() -> int:
     import wiki_ops

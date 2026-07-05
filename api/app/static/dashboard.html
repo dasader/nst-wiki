@@ -27,6 +27,13 @@
 <body>
 <div id="list">
   <p><input id="adminkey" type="password" placeholder="Admin Key"></p>
+  <details id="editor">
+    <summary>위키 페이지 편집</summary>
+    <p><input id="editpath" placeholder="tech/hbm.md" style="width:200px">
+       <button onclick="loadPage()">불러오기</button></p>
+    <textarea id="editbody" style="width:100%;height:180px;font:12px monospace"></textarea>
+    <p><button onclick="savePage()" style="background:#2a7d4f;color:#fff;border:0">저장</button></p>
+  </details>
   <div id="tasks"></div>
 </div>
 <div id="detail"><p>왼쪽에서 태스크를 선택하세요.</p></div>
@@ -71,7 +78,9 @@ async function openTask(taskId) {
   const suggestions = (r.suggestions || []).map(s => `<li>${escapeHtml(String(s.path))} (${escapeHtml(String(s.action))})</li>`).join("");
   const actions = r.status === "staged"
     ? `<p><button id="approve" onclick="act('approve')">승인</button>
-       <button id="reject" onclick="act('reject')">거부</button></p>` : "";
+       <button id="reject" onclick="act('reject')">거부</button></p>`
+    : `<p><button onclick="deleteSource()" style="background:#b3403a;color:#fff;border:0;padding:8px 20px">소스 삭제 (un-ingest)</button>
+       <button onclick="downloadOriginal()">원본 다운로드</button></p>`;
   $("#detail").innerHTML = `
     <h2><span class="badge b-${r.status}">${r.status}</span> ${taskId}</h2>
     ${actions}
@@ -120,6 +129,47 @@ async function act(action) {
   } finally {
     document.querySelectorAll("#approve, #reject").forEach(b => b.disabled = false);
   }
+}
+
+async function deleteSource() {
+  if (!confirm("이 소스의 정식 데이터·원본·태스크를 삭제합니다. 병합된 위키 서술은 남습니다. 계속?")) return;
+  const res = await fetch(`/api/v1/ingest/${current}/source`, {
+    method: "DELETE", headers: { "X-Admin-Key": keyInput.value },
+  });
+  alert("삭제: " + res.status + " " + (await res.text()).slice(0, 400));
+  await loadList();
+  if (res.ok) $("#detail").innerHTML = "<p>소스가 삭제되었습니다.</p>";
+}
+
+async function downloadOriginal() {
+  const res = await fetch(`/api/v1/ingest/${current}/original`, {
+    headers: { "X-Admin-Key": keyInput.value },
+  });
+  if (!res.ok) return alert("원본 없음 (" + res.status + ")");
+  const cd = res.headers.get("content-disposition") || "";
+  const name = decodeURIComponent((cd.match(/filename\*?=(?:UTF-8'')?"?([^\";]+)/) || [])[1] || "original");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadPage() {
+  const path = $("#editpath").value.trim();
+  if (!path) return;
+  const res = await fetch(`/api/v1/wiki/page?path=${encodeURIComponent(path)}`);
+  $("#editbody").value = res.ok ? (await res.json()).content_md : "";
+  if (!res.ok) alert("새 페이지 (기존 없음) — 내용을 입력해 저장하세요");
+}
+
+async function savePage() {
+  const path = $("#editpath").value.trim();
+  const res = await fetch("/api/v1/wiki/page", {
+    method: "PUT",
+    headers: { "X-Admin-Key": keyInput.value, "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content_md: $("#editbody").value }),
+  });
+  alert("저장: " + res.status + " " + (await res.text()).slice(0, 200));
 }
 
 loadList();

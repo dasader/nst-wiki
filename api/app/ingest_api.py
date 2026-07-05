@@ -3,11 +3,13 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import db
@@ -108,6 +110,73 @@ def reject(task_id: str):
         db.set_status(task_id, "staged")
         raise
     return {"status": "rejected"}
+
+
+def _sources_root() -> Path:
+    return Path(os.environ.get("SOURCES_PATH", "/data/sources"))
+
+
+def _source_meta(source_id: str) -> dict:
+    p = _sources_root() / source_id / "metadata.json"
+    return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+
+
+@router.delete("/ingest/{task_id}/source", dependencies=[Depends(require_admin)])
+def delete_source(task_id: str):
+    """승인된 소스를 un-ingest: 정식 행·on-disk 원본·태스크·소스전용 위키 페이지를 삭제한다.
+
+    중복 승인 소스 정리(pre-dedup)에도 이 엔드포인트를 쓴다.
+    """
+    task = db.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    source_id = task["source_id"]
+
+    counts = db.delete_source(source_id)
+
+    # ponytail: 위키 서사는 여러 소스가 한 페이지로 병합돼 깔끔히 un-merge할 수 없다.
+    # 정직한 최선 — 소스 전용 페이지(summaries/{source_id}.md)만 지운다.
+    # 공유 tech/entity/synthesis 페이지에 남은 이 소스의 기여분은 제거하지 못한다(수동 편집 필요).
+    summary_rel = f"summaries/{source_id}.md"
+    summary_deleted = wiki_ops.delete_page(
+        _wiki_root(), summary_rel, f"delete source: {source_id}"
+    )
+    if summary_deleted:  # 더 이상 존재하지 않는 페이지의 Qdrant 포인트만 제거
+        try:
+            from tasks import unindex_pages
+
+            unindex_pages.delay([summary_rel])
+        except Exception:
+            pass  # 색인 정리 실패는 삭제를 되돌릴 사유가 아님 — POST /reindex로 복구
+
+    db.delete_task(task_id)
+
+    # on-disk 소스 디렉토리 삭제 (경로가 sources 루트 안인지 확인)
+    src_dir = (_sources_root() / source_id).resolve()
+    if src_dir.is_relative_to(_sources_root().resolve()) and src_dir.is_dir():
+        shutil.rmtree(src_dir)
+
+    return {
+        "deleted": counts,
+        "summary_page_deleted": summary_deleted,
+        "wiki_narrative_remains": True,  # 공유 페이지 기여분은 남아 있음
+        "note": ("공유 위키 페이지(tech/entity/synthesis)에 병합된 이 소스의 서술은 "
+                 "자동 제거되지 않습니다. 필요하면 PUT /wiki/page로 수동 편집하세요."),
+    }
+
+
+@router.get("/ingest/{task_id}/original", dependencies=[Depends(require_admin)])
+def download_original(task_id: str):
+    task = db.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    src_dir = _sources_root() / task["source_id"]
+    originals = sorted(src_dir.glob("original.*")) if src_dir.is_dir() else []
+    if not originals:
+        raise HTTPException(status_code=404, detail="original file not found")
+    orig = originals[0]
+    title = _source_meta(task["source_id"]).get("title") or task["source_id"]
+    return FileResponse(orig, filename=f"{title}{orig.suffix}")
 
 
 @router.post("/reindex", dependencies=[Depends(require_admin)])
