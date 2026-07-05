@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from pipeline import classify, describe, map_tables, narrative
+from pipeline import classify, describe, events, map_tables, narrative
 import wiki_ops
 
 
@@ -24,5 +24,8 @@ def compile_source(source_dir: Path, source_id: str, wiki_root: Path) -> dict:
             f"ingest: {meta.get('title', source_id)} (source: {source_id})",
         )
         affected_pages, contradictions = nar["affected_pages"], nar["contradictions"]
+        ev = events.extract_and_stage_events(texts, source_id)  # 서사 속 정책 이벤트 → staging
+        if ev["staged"]:
+            affected_tables["staged"].append({"table": "policy_events", "rows": ev["staged"]})
     return {"branch": branch, "affected_pages": affected_pages,
             "affected_tables": affected_tables, "contradictions": contradictions}

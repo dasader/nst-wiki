@@ -30,11 +30,15 @@ def test_compile_source_full_flow(tmp_path, monkeypatch):
                             "affected_pages": [{"path": "tech/a.md", "action": "create"}],
                             "contradictions": [],
                         })
+    monkeypatch.setattr(compile_mod.events, "extract_and_stage_events",
+                        lambda texts, sid: {"staged": 2})
     source_id = str(uuid.uuid4())
     out = compile_mod.compile_source(src, source_id, wiki)
     assert out["branch"] == f"ingest/{source_id}"
     assert out["affected_pages"] == [{"path": "tech/a.md", "action": "create"}]
-    assert out["affected_tables"] == {"staged": [], "needs_review": 0}
+    # 이벤트 추출 결과가 affected_tables에 합류
+    assert out["affected_tables"] == {"staged": [{"table": "policy_events", "rows": 2}],
+                                      "needs_review": 0}
 
 
 def test_compile_source_no_narrative(tmp_path, monkeypatch):
@@ -80,6 +84,8 @@ def test_compile_source_ignores_phantom_chunk_ids(tmp_path, monkeypatch):
                 "affected_pages": [{"path": "tech/a.md", "action": "create"}],
                 "contradictions": []}
     monkeypatch.setattr(compile_mod.narrative, "compile_narrative", fake_narrative)
+    monkeypatch.setattr(compile_mod.events, "extract_and_stage_events",
+                        lambda texts, sid: {"staged": 0})
     out = compile_mod.compile_source(src, str(uuid.uuid4()), wiki)
     assert received["texts"] == ["정책 서사"]  # c999는 조용히 무시
     assert out["affected_pages"] == [{"path": "tech/a.md", "action": "create"}]
