@@ -82,6 +82,31 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 이 페이지에 관련된 내용만 반영하고, content에 페이지 전문을 반환하라."""
 
 
+def _strip_uc(fm: str) -> str:
+    """프론트매터에서 기존 unresolved_contradictions 블록 제거 — 재병합 시 중복 방지."""
+    out, skip = [], False
+    for ln in fm.splitlines():
+        if ln.startswith("unresolved_contradictions:"):
+            skip = True
+            continue
+        if skip and ln.startswith("  "):  # 들여쓴 리스트 항목
+            continue
+        skip = False
+        out.append(ln)
+    return "\n".join(out)
+
+
+def _inject_contradictions(content: str, items: list[dict]) -> str:
+    """페이지 YAML 프론트매터에 unresolved_contradictions 리스트를 심어 본문에서도 충돌이 보이게 한다."""
+    lines = [f'  - "{c["summary"]} (기존: {c["existing"]} / 신규: {c["new"]})"' for c in items]
+    block = "unresolved_contradictions:\n" + "\n".join(lines)
+    if content.startswith("---"):
+        _, fm, body = content.split("---", 2)
+        fm = _strip_uc(fm).rstrip("\n") + "\n" + block + "\n"
+        return f"---{fm}---{body}"
+    return f"---\n{block}\n---\n\n{content}"  # 프론트매터 없으면 새로 생성
+
+
 def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
                       narrative_texts: list[str]) -> dict:
     today = date.today().isoformat()
@@ -105,7 +130,10 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
             source_id=source_id, today=today, path=page["path"], title=page["title"],
             current=current, doc_title=meta.get("title", ""), narrative=narrative,
         ), schema=MERGE_SCHEMA)
-        files[page["path"]] = merged["content"]
+        content = merged["content"]
+        if merged["contradictions"]:
+            content = _inject_contradictions(content, merged["contradictions"])
+        files[page["path"]] = content
         affected.append({"path": page["path"], "action": page["action"]})
         for c in merged["contradictions"]:
             contradictions.append({**c, "page": page["path"]})

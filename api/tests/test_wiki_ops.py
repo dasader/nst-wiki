@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 import pytest
@@ -111,3 +112,51 @@ def test_reject_deletes_branch(tmp_path):
 def test_approve_branch_idempotent_when_branch_missing(tmp_path):
     init_wiki(tmp_path)
     wiki_ops.approve_branch(tmp_path, "sX", "approve: 없음")  # 브랜치 없음 — 예외 없이 리턴
+
+
+def test_read_page_asof(tmp_path):
+    init_wiki(tmp_path)
+    rel = "tech/asof.md"
+
+    def _commit(content, date):
+        (tmp_path / rel).write_text(content, encoding="utf-8")
+        env = {**os.environ, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date}
+        subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "c"],
+                       env=env, check=True, capture_output=True)
+
+    _commit("v1", "2026-01-01T00:00:00")
+    _commit("v2", "2026-06-01T00:00:00")
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2026-03-01") == "v1"   # v1과 v2 사이
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2026-07-01") == "v2"   # v2 이후
+    assert wiki_ops.read_page_asof(tmp_path, rel, "2025-01-01") is None   # 생성 전
+
+
+def test_write_page_commits_on_main(tmp_path):
+    init_wiki(tmp_path)
+    assert wiki_ops.write_page(tmp_path, "tech/edit.md", "# 편집\n본문", "edit: tech/edit.md")
+    assert _git_out(tmp_path, "branch", "--show-current").strip() == "main"
+    assert "tech/edit.md" in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
+    assert _git_out(tmp_path, "show", "main:tech/edit.md") == "# 편집\n본문"
+    assert "edit: tech/edit.md" in _git_out(tmp_path, "log", "--oneline", "main")
+
+
+def test_write_page_noop_when_unchanged(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.write_page(tmp_path, "tech/x.md", "동일", "m1")
+    assert wiki_ops.write_page(tmp_path, "tech/x.md", "동일", "m2") is False  # 변경 없음 → 커밋 생략
+
+
+def test_write_page_rejects_path_escape(tmp_path):
+    init_wiki(tmp_path)
+    with pytest.raises(ValueError, match="escapes"):
+        wiki_ops.write_page(tmp_path, "../evil.md", "x", "m")
+
+
+def test_delete_page_removes_and_is_idempotent(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.write_page(tmp_path, "summaries/s1.md", "# 요약", "m")
+    assert wiki_ops.delete_page(tmp_path, "summaries/s1.md", "delete: s1") is True
+    assert not (tmp_path / "summaries" / "s1.md").exists()
+    assert "summaries/s1.md" not in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
+    assert wiki_ops.delete_page(tmp_path, "summaries/s1.md", "delete: s1") is False  # 멱등

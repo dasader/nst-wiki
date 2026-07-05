@@ -1,5 +1,6 @@
 "use client";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const LINKS = [
   { href: "/", label: "질문하기" },
@@ -7,9 +8,17 @@ const LINKS = [
   { href: "/data", label: "데이터" },
 ];
 
+// 관리 대시보드는 api 오리진(:8000)이 직접 서빙 — 공개 프록시로 노출하지 않는다.
+// 배포시 NEXT_PUBLIC_ADMIN_URL로 덮어쓰고, 없으면 현재 호스트에서 유추.
 export default function Nav() {
   const path = usePathname();
   const active = (href) => (href === "/" ? path === "/" : path.startsWith(href));
+  const [adminUrl, setAdminUrl] = useState(process.env.NEXT_PUBLIC_ADMIN_URL || "#");
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_ADMIN_URL) {
+      setAdminUrl(`${location.protocol}//${location.hostname}:8000/`);
+    }
+  }, []);
   return (
     <nav className="main">
       {LINKS.map((l) => (
@@ -17,7 +26,7 @@ export default function Nav() {
           {l.label}
         </a>
       ))}
-      <a href="http://localhost:8000/" target="_blank" rel="noreferrer" className="ext">
+      <a href={adminUrl} target="_blank" rel="noreferrer" className="ext">
         승인 대시보드
       </a>
     </nav>
