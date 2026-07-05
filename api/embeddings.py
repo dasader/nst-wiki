@@ -69,7 +69,8 @@ def ensure_collection(client) -> None:
         )
 
 
-def index_page(client, path: str, text: str) -> int:
+def delete_page(client, path: str) -> None:
+    """path에 속한 모든 청크 포인트를 지운다 (페이지가 삭제되어 재색인 대상이 아닐 때)."""
     from qdrant_client import models
 
     client.delete(
@@ -78,6 +79,12 @@ def index_page(client, path: str, text: str) -> int:
             models.FieldCondition(key="path", match=models.MatchValue(value=path))
         ])),
     )
+
+
+def index_page(client, path: str, text: str) -> int:
+    from qdrant_client import models
+
+    delete_page(client, path)
     chunks = chunk_page(text)
     if not chunks:
         return 0

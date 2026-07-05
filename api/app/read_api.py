@@ -6,12 +6,17 @@ import subprocess
 from pathlib import Path
 
 import psycopg
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg.rows import dict_row
+from pydantic import BaseModel
 
 import wiki_ops
+from app.ingest_api import require_admin
 
 router = APIRouter(prefix="/api/v1")
+
+# 새 페이지 허용 경로: PAGE_DIRS/ + 파일명(영문·한글·숫자·.-_). narrative.PATH_RE와 동일 규칙 + summaries
+_NEW_PAGE_RE = re.compile(r"^(tech|entity|events|synthesis|summaries)/[\w가-힣.-]+\.md$")
 
 DATA_TABLES = {
     "technologies": ["id", "name", "field", "sub_field", "lead_ministry", "trl_level",
@@ -96,6 +101,30 @@ def wiki_page(path: str = Query(...)):
         for line in log.splitlines() if line
     ]
     return {"path": path, "content_md": content, "history": history}
+
+
+class WikiEditBody(BaseModel):
+    path: str
+    content_md: str
+    message: str | None = None
+
+
+@router.put("/wiki/page", dependencies=[Depends(require_admin)])
+def wiki_edit(body: WikiEditBody):
+    root = _root()
+    existing = body.path in _main_pages(root)
+    if not existing and not _NEW_PAGE_RE.match(body.path):
+        raise HTTPException(status_code=400, detail="invalid page path")
+    msg = body.message or f"edit: {body.path}"
+    changed = wiki_ops.write_page(root, body.path, body.content_md, msg)
+    if changed:  # 변경이 있을 때만 재색인 enqueue (모델 로드는 워커에서)
+        try:
+            from tasks import embed_pages
+
+            embed_pages.delay([body.path])
+        except Exception:
+            pass  # 색인 enqueue 실패는 저장을 되돌릴 사유가 아님 — POST /reindex로 복구
+    return {"path": body.path, "committed": changed, "created": not existing}
 
 
 @router.get("/wiki/search")

@@ -71,6 +71,43 @@ def stage_changes(root: Path, source_id: str, files: dict[str, str], message: st
     return branch
 
 
+def write_page(root: Path, rel: str, content: str, message: str) -> bool:
+    """main에 페이지 하나를 쓰고 커밋한다 (관리자 수동 편집용). 내용 변화가 없으면 커밋 생략 → False.
+
+    인제스트 파이프라인은 ingest/* 브랜치만 쓰지만, 사람 편집은 감사 이력을 남기며 main에 직접 커밋한다.
+    """
+    p = (root / rel).resolve()
+    if not p.is_relative_to(root.resolve()):
+        raise ValueError(f"path escapes wiki root: {rel}")
+    with _lock(root):
+        _git(root, "checkout", "-f", "main")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        _git(root, "add", "--", str(p.relative_to(root)))
+        # 변경 없음이면 git commit이 실패하므로 diff로 미리 확인 (멱등)
+        staged = subprocess.run(
+            ["git", "-C", str(root), "diff", "--cached", "--quiet"],
+        ).returncode
+        if staged == 0:
+            return False
+        _git(root, "commit", "-m", message)
+    return True
+
+
+def delete_page(root: Path, rel: str, message: str) -> bool:
+    """main에서 페이지 하나를 지우고 커밋. 파일이 없으면 False (멱등)."""
+    p = (root / rel).resolve()
+    if not p.is_relative_to(root.resolve()) or not p.is_file():
+        return False
+    with _lock(root):
+        _git(root, "checkout", "-f", "main")
+        if not (root / rel).is_file():
+            return False
+        _git(root, "rm", "--", rel)
+        _git(root, "commit", "-m", message)
+    return True
+
+
 def _branch_exists(root: Path, branch: str) -> bool:
     out = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", branch],

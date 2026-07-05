@@ -118,6 +118,67 @@ def test_list_tasks_endpoint():
     assert "tasks" in r.json()
 
 
+def test_delete_source_endpoint(tmp_path, monkeypatch):
+    from app import ingest_api
+    from app import db as real_db
+    monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
+    monkeypatch.setattr(ingest_api.db, "delete_source",
+                        lambda s: {"technologies": 2, "projects": 1})
+    deleted_pages = []
+    monkeypatch.setattr(ingest_api.wiki_ops, "delete_page",
+                        lambda root, rel, msg: deleted_pages.append(rel) or True)
+
+    task_id, source_id = str(_uuid.uuid4()), str(_uuid.uuid4())
+    (tmp_path / source_id).mkdir()
+    (tmp_path / source_id / "original.pdf").write_bytes(b"x")
+    real_db.create_task(task_id, source_id)
+    try:
+        r = client.delete(f"/api/v1/ingest/{task_id}/source",
+                          headers={"X-Admin-Key": "testkey"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] == {"technologies": 2, "projects": 1}
+        assert body["summary_page_deleted"] is True
+        assert body["wiki_narrative_remains"] is True
+        assert deleted_pages == [f"summaries/{source_id}.md"]
+        assert real_db.get_task(task_id) is None      # 태스크 삭제됨
+        assert not (tmp_path / source_id).exists()     # 소스 디렉토리 삭제됨
+    finally:
+        real_db.delete_task(task_id)
+
+
+def test_delete_source_requires_admin_and_404():
+    r = client.delete("/api/v1/ingest/x/source", headers={"X-Admin-Key": "wrong"})
+    assert r.status_code == 401
+    r = client.delete("/api/v1/ingest/00000000-0000-0000-0000-000000000000/source",
+                      headers={"X-Admin-Key": "testkey"})
+    assert r.status_code == 404
+
+
+def test_download_original(tmp_path, monkeypatch):
+    from app import db as real_db
+    monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
+    task_id, source_id = str(_uuid.uuid4()), str(_uuid.uuid4())
+    (tmp_path / source_id).mkdir()
+    (tmp_path / source_id / "original.pdf").write_bytes("%PDF-1.4 데이터".encode())
+    import json as _json
+    (tmp_path / source_id / "metadata.json").write_text(
+        _json.dumps({"title": "테스트문서"}), encoding="utf-8")
+    real_db.create_task(task_id, source_id)
+    try:
+        r = client.get(f"/api/v1/ingest/{task_id}/original",
+                       headers={"X-Admin-Key": "testkey"})
+        assert r.status_code == 200
+        assert r.content == "%PDF-1.4 데이터".encode()
+        # 404 when missing
+        (tmp_path / source_id / "original.pdf").unlink()
+        r = client.get(f"/api/v1/ingest/{task_id}/original",
+                       headers={"X-Admin-Key": "testkey"})
+        assert r.status_code == 404
+    finally:
+        real_db.delete_task(task_id)
+
+
 def test_approve_reverts_to_staged_on_wiki_failure(monkeypatch):
     from app import ingest_api
     from app import db as real_db

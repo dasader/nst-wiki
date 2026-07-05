@@ -172,6 +172,48 @@ def discard_staged(source_id: str) -> None:
         )
 
 
+# source_id로 소유가 추적되는 정식 테이블 (ministries는 seed/공유라 제외 — 지우면 다른 소스가 깨진다)
+SOURCE_TABLES = ["technologies", "projects", "policy_events", "budget_history"]
+
+
+def delete_source(source_id: str) -> dict:
+    """승인된 소스를 un-ingest: 이 source_id의 정식 행·staging 잔재를 전부 삭제하고 삭제 건수를 반환.
+
+    tech_project_mapping·budget_history는 projects/technologies를 FK 참조하므로 자식부터 지운다.
+    tech_project_mapping엔 source_id가 없어 이 소스의 tech/project를 참조하는 행을 고아로 보고 함께 삭제.
+    위키 서사는 소스 간 병합되어 여기서 되돌릴 수 없다 (엔드포인트가 summaries 페이지만 처리).
+    """
+    counts = {}
+    with connect() as conn:  # 한 트랜잭션 — 부분 삭제로 FK가 어긋나지 않게
+        # 이 소스가 만든 projects/technologies를 참조하는 자식 행 먼저 (source_id 무관)
+        counts["tech_project_mapping"] = conn.execute(
+            "DELETE FROM tech_project_mapping WHERE "
+            "technology_id IN (SELECT id FROM technologies WHERE source_id=%s) OR "
+            "project_id IN (SELECT id FROM projects WHERE source_id=%s)",
+            (source_id, source_id),
+        ).rowcount
+        counts["budget_history"] = conn.execute(
+            "DELETE FROM budget_history WHERE source_id=%s OR "
+            "project_id IN (SELECT id FROM projects WHERE source_id=%s)",
+            (source_id, source_id),
+        ).rowcount
+        for t in ["projects", "technologies", "policy_events"]:
+            counts[t] = conn.execute(
+                f"DELETE FROM {t} WHERE source_id=%s", (source_id,)  # 이름은 리터럴 화이트리스트
+            ).rowcount
+        # staging 잔재 (거부 전 남았을 수 있음)
+        staged = 0
+        for t in STAGED_TABLES:
+            staged += conn.execute(
+                f"DELETE FROM staging.{t} WHERE source_id=%s", (source_id,)
+            ).rowcount
+        staged += conn.execute(
+            "DELETE FROM staging_tables WHERE source_id=%s", (source_id,)
+        ).rowcount
+        counts["staging"] = staged
+    return counts
+
+
 def list_tasks(limit: int = 50) -> list[dict]:
     with connect() as conn:
         return conn.execute(

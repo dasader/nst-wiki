@@ -111,3 +111,33 @@ def test_reject_deletes_branch(tmp_path):
 def test_approve_branch_idempotent_when_branch_missing(tmp_path):
     init_wiki(tmp_path)
     wiki_ops.approve_branch(tmp_path, "sX", "approve: 없음")  # 브랜치 없음 — 예외 없이 리턴
+
+
+def test_write_page_commits_on_main(tmp_path):
+    init_wiki(tmp_path)
+    assert wiki_ops.write_page(tmp_path, "tech/edit.md", "# 편집\n본문", "edit: tech/edit.md")
+    assert _git_out(tmp_path, "branch", "--show-current").strip() == "main"
+    assert "tech/edit.md" in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
+    assert _git_out(tmp_path, "show", "main:tech/edit.md") == "# 편집\n본문"
+    assert "edit: tech/edit.md" in _git_out(tmp_path, "log", "--oneline", "main")
+
+
+def test_write_page_noop_when_unchanged(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.write_page(tmp_path, "tech/x.md", "동일", "m1")
+    assert wiki_ops.write_page(tmp_path, "tech/x.md", "동일", "m2") is False  # 변경 없음 → 커밋 생략
+
+
+def test_write_page_rejects_path_escape(tmp_path):
+    init_wiki(tmp_path)
+    with pytest.raises(ValueError, match="escapes"):
+        wiki_ops.write_page(tmp_path, "../evil.md", "x", "m")
+
+
+def test_delete_page_removes_and_is_idempotent(tmp_path):
+    init_wiki(tmp_path)
+    wiki_ops.write_page(tmp_path, "summaries/s1.md", "# 요약", "m")
+    assert wiki_ops.delete_page(tmp_path, "summaries/s1.md", "delete: s1") is True
+    assert not (tmp_path / "summaries" / "s1.md").exists()
+    assert "summaries/s1.md" not in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
+    assert wiki_ops.delete_page(tmp_path, "summaries/s1.md", "delete: s1") is False  # 멱등
