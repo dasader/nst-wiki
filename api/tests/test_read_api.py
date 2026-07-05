@@ -66,3 +66,21 @@ def test_data_table_whitelist_and_query():
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"rows", "total", "page", "limit"}
+
+
+def test_data_table_filter_and_sort():
+    # 잘못된 필터 컬럼·정렬 방향은 400 (화이트리스트/열거 밖)
+    assert client.get("/api/v1/data/technologies",
+                      params={"column": "없는컬럼", "q": "x"}).status_code == 400
+    assert client.get("/api/v1/data/technologies",
+                      params={"sort_by": "name", "order": "sideways"}).status_code == 400
+    # 필터: 반환된 모든 행의 field가 검색어를 포함 (ILIKE)
+    r = client.get("/api/v1/data/technologies", params={"column": "field", "q": "인공지능"})
+    assert r.status_code == 200
+    assert all("인공지능" in (row["field"] or "") for row in r.json()["rows"])
+    # 정렬: desc는 asc의 역순 (DB 콜레이션에 무관하게 order 파라미터가 반영되는지)
+    asc = [r["name"] for r in client.get("/api/v1/data/technologies",
+           params={"sort_by": "name", "order": "asc", "limit": 200}).json()["rows"]]
+    desc = [r["name"] for r in client.get("/api/v1/data/technologies",
+            params={"sort_by": "name", "order": "desc", "limit": 200}).json()["rows"]]
+    assert desc == asc[::-1] and len(asc) > 1

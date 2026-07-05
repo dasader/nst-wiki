@@ -82,7 +82,11 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
 
 def test_coerce_strips_list_markers():
     assert mt._coerce("name", "◯ 38 5G 고도화(5G-Adv)") == "5G 고도화(5G-Adv)"
-    assert mt._coerce("field", "<10> 차세대 통신") == "차세대 통신"
+    # field는 12대 분야 정규 표기로 정규화 (공백 무시 매칭 → 깨진 내부 공백 복구)
+    assert mt._coerce("field", "<10> 차세대 통신") == "차세대통신"
+    assert mt._coerce("field", "반도체· 디스 플레이") == "반도체·디스플레이"
+    # · 주변 잘못된 공백은 제거하되 ·는 보존 (name 등 일반 문자열)
+    assert mt._coerce("name", "우주항공 ·해양") == "우주항공·해양"
     assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"
     assert mt._coerce("name", "(3) 첨단로봇") == "첨단로봇"
     assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
