@@ -40,6 +40,20 @@ def test_wiki_search(tmp_path, monkeypatch):
     assert client.get("/api/v1/wiki/search", params={"q": ""}).status_code == 422
 
 
+def test_korean_path_roundtrips(tmp_path, monkeypatch):
+    # 한글 파일명이 git 8진수 quote로 깨지지 않고 목록·검색·조회를 통과하는지 (core.quotePath=false)
+    init_wiki(tmp_path)
+    import wiki_ops
+    path = "entity/과학기술정보통신부.md"
+    wiki_ops.stage_changes(tmp_path, "sK", {path: "# 부처\n\n한글본문검색어"}, "m")
+    wiki_ops.approve_branch(tmp_path, "sK", "approve: m")
+    monkeypatch.setenv("WIKI_REPO_PATH", str(tmp_path))
+    assert path in client.get("/api/v1/wiki").json()["pages"]  # 목록에 원문 경로
+    assert client.get("/api/v1/wiki/page", params={"path": path}).status_code == 200
+    hits = client.get("/api/v1/wiki/search", params={"q": "한글본문검색어"}).json()["results"]
+    assert any(h["path"] == path for h in hits)  # 검색 경로도 원문 (8진수 아님)
+
+
 def test_wiki_search_leading_dash_is_pattern(tmp_path, monkeypatch):
     _wiki_with_page(tmp_path, monkeypatch)
     # 옵션 주입 시도 — 패턴으로 취급되어 빈 결과(200)여야 하며, 옵션으로 해석되면 안 됨
@@ -88,3 +102,21 @@ def test_data_table_whitelist_and_query():
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"rows", "total", "page", "limit"}
+
+
+def test_data_table_filter_and_sort():
+    # 잘못된 필터 컬럼·정렬 방향은 400 (화이트리스트/열거 밖)
+    assert client.get("/api/v1/data/technologies",
+                      params={"column": "없는컬럼", "q": "x"}).status_code == 400
+    assert client.get("/api/v1/data/technologies",
+                      params={"sort_by": "name", "order": "sideways"}).status_code == 400
+    # 필터: 반환된 모든 행의 field가 검색어를 포함 (ILIKE)
+    r = client.get("/api/v1/data/technologies", params={"column": "field", "q": "인공지능"})
+    assert r.status_code == 200
+    assert all("인공지능" in (row["field"] or "") for row in r.json()["rows"])
+    # 정렬: desc는 asc의 역순 (DB 콜레이션에 무관하게 order 파라미터가 반영되는지)
+    asc = [r["name"] for r in client.get("/api/v1/data/technologies",
+           params={"sort_by": "name", "order": "asc", "limit": 200}).json()["rows"]]
+    desc = [r["name"] for r in client.get("/api/v1/data/technologies",
+            params={"sort_by": "name", "order": "desc", "limit": 200}).json()["rows"]]
+    assert desc == asc[::-1] and len(asc) > 1

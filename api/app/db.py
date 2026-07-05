@@ -10,12 +10,26 @@ def connect() -> psycopg.Connection:
     return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
 
 
-def create_task(task_id: str, source_id: str) -> None:
+def create_task(task_id: str, source_id: str, file_hash: str | None = None) -> None:
     with connect() as conn:
         conn.execute(
-            "INSERT INTO ingest_tasks (task_id, source_id, status) VALUES (%s, %s, 'queued')",
-            (task_id, source_id),
+            "INSERT INTO ingest_tasks (task_id, source_id, status, file_hash) "
+            "VALUES (%s, %s, 'queued', %s)",
+            (task_id, source_id, file_hash),
         )
+
+
+# 거부·실패가 아닌 상태 = 이미 인제스트됐거나 진행 중 → 재업로드 시 중복
+_ACTIVE_STATUSES = ("queued", "parsing", "classifying", "staged", "approved")
+
+
+def find_ingested_by_hash(file_hash: str) -> dict | None:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT task_id, source_id, status FROM ingest_tasks "
+            "WHERE file_hash = %s AND status = ANY(%s) ORDER BY created_at DESC LIMIT 1",
+            (file_hash, list(_ACTIVE_STATUSES)),
+        ).fetchone()
 
 
 def get_task(task_id: str) -> dict | None:
@@ -131,6 +145,21 @@ def upsert_staged(source_id: str) -> dict:
                 counts[t] += cur.rowcount
             conn.execute(f"DELETE FROM staging.{t} WHERE source_id = %s", (source_id,))
     return counts
+
+
+def drop_staged_rows(source_id: str, exclude: dict) -> int:
+    """승인 전 사람이 제외한 staging 행을 삭제한다. 표 오매핑을 걸러내는 용도."""
+    n = 0
+    with connect() as conn:
+        for t, ids in (exclude or {}).items():
+            if t not in STAGED_TABLES or not ids:
+                continue  # 화이트리스트 밖 테이블명은 무시 (SQL 주입 방지)
+            cur = conn.execute(
+                f"DELETE FROM staging.{t} WHERE source_id = %s AND id = ANY(%s)",
+                (source_id, [int(i) for i in ids]),
+            )
+            n += cur.rowcount
+    return n
 
 
 def discard_staged(source_id: str) -> None:

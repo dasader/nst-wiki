@@ -82,9 +82,26 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
 
 def test_coerce_strips_list_markers():
     assert mt._coerce("name", "◯ 38 5G 고도화(5G-Adv)") == "5G 고도화(5G-Adv)"
-    assert mt._coerce("field", "<10> 차세대 통신") == "차세대 통신"
+    # field는 12대 분야 정규 표기로 정규화 (공백 무시 매칭 → 깨진 내부 공백 복구)
+    assert mt._coerce("field", "<10> 차세대 통신") == "차세대통신"
+    assert mt._coerce("field", "반도체· 디스 플레이") == "반도체·디스플레이"
+    assert mt.canon_field("우주항공 해양") == "우주항공·해양"  # ·대신 공백도 정규화
+    assert mt.canon_field("반도체") == "반도체"  # 부분 표기는 그대로 (오매핑 방지)
+    # · 주변 잘못된 공백은 제거하되 ·는 보존 (name 등 일반 문자열)
+    assert mt._coerce("name", "우주항공 ·해양") == "우주항공·해양"
     assert mt._coerce("name", "1. 양자컴퓨팅") == "양자컴퓨팅"
     assert mt._coerce("name", "(3) 첨단로봇") == "첨단로봇"
     assert mt._coerce("name", "5G-6G 통합") == "5G-6G 통합"  # 숫자 시작 정상값 보존
     assert mt._coerce("name", "⑩ 차세대 이차전지 소재·셀") == "차세대 이차전지 소재·셀"  # 원문자 번호
     assert mt._coerce("trl_level", "7") == 7  # INT 경로 불변
+
+
+def test_coerce_year_forms():
+    assert mt._coerce("start_year", "'24") == 2024        # 2자리 약식
+    assert mt._coerce("end_year", "'28") == 2028
+    assert mt._coerce("start_year", "'24~'28") == 2024    # 기간 → 첫 연도
+    assert mt._coerce("end_year", "'24~'28") == 2028      # 기간 → 끝 연도
+    assert mt._coerce("start_year", "2024-2028") == 2024
+    assert mt._coerce("start_year", "2024") == 2024
+    assert mt._coerce("end_year", "미정") is None
+    assert mt._coerce("budget_total", "30,000") == 30000  # 예산 정수 경로 불변

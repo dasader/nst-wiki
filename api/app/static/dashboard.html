@@ -57,7 +57,7 @@ async function openTask(taskId) {
   currentSource8 = (r.source_id || "").slice(0, 8);
   const stagedTables = Object.entries(r.staged || {})
     .filter(([k, v]) => k !== "needs_review" && v.length)
-    .map(([k, v]) => `<h4>staging.${k} (${v.length}행)</h4>` + htmlTable(v)).join("");
+    .map(([k, v]) => `<h4>staging.${k} (${v.length}행)</h4>` + htmlTable(v, k)).join("");
   const needsReview = (r.staged?.needs_review || []).length
     ? `<h4>스키마 검토 필요 (${r.staged.needs_review.length}건)</h4>` + htmlTable(r.staged.needs_review)
     : "";
@@ -81,12 +81,16 @@ async function openTask(taskId) {
     <h3>위키 diff</h3><pre>${escapeHtml(r.wiki_diff || "(없음)")}</pre>`;
 }
 
-function htmlTable(rows) {
+function htmlTable(rows, table) {
   if (!rows.length) return "";
   const cols = Object.keys(rows[0]);
-  return `<table><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr>` +
-    rows.map(r => `<tr>${cols.map(c => { const v = r[c]; const s = v !== null && typeof v === "object" ? JSON.stringify(v) : String(v ?? ""); return `<td>${escapeHtml(s)}</td>`; }).join("")}</tr>`).join("") +
-    "</table>";
+  const excl = table && "id" in rows[0];  // 핵심 staging 표만 행 제외 지원
+  const head = (excl ? "<th>제외</th>" : "") + cols.map(c => `<th>${c}</th>`).join("");
+  const body = rows.map(r => {
+    const cb = excl ? `<td><input type="checkbox" class="excl" data-table="${escapeHtml(table)}" data-id="${escapeHtml(String(r.id))}"></td>` : "";
+    return `<tr>${cb}${cols.map(c => { const v = r[c]; const s = v !== null && typeof v === "object" ? JSON.stringify(v) : String(v ?? ""); return `<td>${escapeHtml(s)}</td>`; }).join("")}</tr>`;
+  }).join("");
+  return `<table><tr>${head}</tr>${body}</table>`;
 }
 
 function escapeHtml(s) {
@@ -96,7 +100,10 @@ function escapeHtml(s) {
 async function act(action) {
   document.querySelectorAll("#approve, #reject").forEach(b => b.disabled = true);
   try {
-    const body = { contradiction_resolutions: {} };
+    const body = { contradiction_resolutions: {}, exclude: {} };
+    document.querySelectorAll(".excl:checked").forEach(cb => {
+      (body.exclude[cb.dataset.table] ??= []).push(Number(cb.dataset.id));
+    });
     // 모순 ID 규약은 log.md와 동일: {source_id 앞 8자}-{순번} (narrative.py가 기록하는 형식)
     document.querySelectorAll(".contradiction").forEach((el, i) => {
       const v = el.querySelector("input:checked");

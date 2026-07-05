@@ -21,9 +21,10 @@ INT_COLS = {"trl_level", "budget_total", "budget_annual", "start_year", "end_yea
 # ponytail: 정책문서 표의 선행 서식(목록 기호·항목 번호·<n>) 제거 휴리스틱 —
 # 숫자+공백/구두점 패턴만 제거하므로 "5G"처럼 숫자로 시작하는 명칭은 보존.
 # 새 서식 유형이 나타나면 패턴 추가로 대응 (완전한 파서는 YAGNI)
-_PREFIX_RE = re.compile(r"^(?:[◯○●◦□■▷▶·•]\s*|[①-⑳㉑-㉟]\s*|\d+[.)]\s*|\d+\s+|<\d+>\s*|\(\d+\)\s*|[-–]\s+)")
-# PDF 추출 시 가운뎃점(·) 주변에 끼어드는 잘못된 공백 제거. ·는 정당한 구분자이므로 보존.
-_MIDDOT_RE = re.compile(r"\s*·\s*")
+_PREFIX_RE = re.compile(r"^(?:[◯○●◦□■▷▶·•§]\s*|[①-⑳㉑-㉟]\s*|\d+[.)]\s*|\d+\s+|<\d+>\s*|\(\d+\)\s*|[-–]\s+)")
+# PDF 추출 시 가운뎃점 계열(·ㆍ‧) 주변에 끼어드는 잘못된 공백 제거 + 계열 문자를 ·로 통일.
+# 가운뎃점은 정당한 구분자이므로 보존하되 변종을 하나로 정규화.
+_MIDDOT_RE = re.compile(r"\s*[·ㆍ‧]\s*")
 
 # 국가전략기술 12대 분야 정규 표기. field 값을 여기에 맞춰 정규화(공백 무시 매칭).
 FIELD_VOCAB = [
@@ -31,7 +32,9 @@ FIELD_VOCAB = [
     "첨단바이오", "우주항공·해양", "수소", "사이버보안",
     "인공지능", "차세대통신", "첨단로봇·제조", "양자",
 ]
-_FIELD_LOOKUP = {re.sub(r"\s", "", f): f for f in FIELD_VOCAB}
+# 매칭 시 공백·가운뎃점 계열을 모두 제거 → "우주항공 해양"(·대신 공백)도 정규 표기로 매핑
+_FIELD_NORM = re.compile(r"[\s·ㆍ‧]")
+_FIELD_LOOKUP = {_FIELD_NORM.sub("", f): f for f in FIELD_VOCAB}
 
 
 def _clean_str(s: str) -> str:
@@ -40,11 +43,11 @@ def _clean_str(s: str) -> str:
     while prev != s:
         prev = s
         s = _PREFIX_RE.sub("", s).strip()
-    return _MIDDOT_RE.sub("·", s)
+    return _MIDDOT_RE.sub("·", s).strip()
 
 
-def _canon_field(s: str) -> str:
-    return _FIELD_LOOKUP.get(re.sub(r"\s", "", s), s)
+def canon_field(s: str) -> str:
+    return _FIELD_LOOKUP.get(_FIELD_NORM.sub("", s), s)
 
 
 MAP_SCHEMA = {
@@ -77,16 +80,38 @@ PROMPT = """한국 정책문서에서 추출한 표를 DB 스키마에 매핑하
 대응하지 않으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
 
 
+# 연도 토큰: 4자리(2024) 또는 2자리 약식('24). 4자리 우선 매칭.
+_YEAR_RE = re.compile(r"'?(\d{4}|\d{2})")
+
+
+def _years(val) -> list[int]:
+    """'24~'28, 2024-2028, '24 등에서 연도를 뽑아 4자리로. 1990~2100만."""
+    out = []
+    for t in _YEAR_RE.findall(str(val)):
+        y = int(t)
+        y = y + 2000 if y < 100 else y
+        if 1990 <= y <= 2100:
+            out.append(y)
+    return out
+
+
 def _coerce(col: str, val):
     if val is None or val == "":
         return None
+    # ponytail: 기간 문자열은 start_year→첫 연도, end_year→끝 연도. 단일 기간 컬럼이 두
+    # 연도를 다 담아도 매핑이 1:1이라 한쪽만 채워짐 — 행 단위 분리는 필요해지면 추가.
+    if col in ("start_year", "end_year"):
+        ys = _years(val)
+        if not ys:
+            return None
+        return ys[0] if col == "start_year" else ys[-1]
     if col in INT_COLS:
         try:
             return int(float(str(val).replace(",", "")))
         except ValueError:
             return None
     s = _clean_str(str(val))
-    return _canon_field(s) if col == "field" else s
+    return canon_field(s) if col == "field" else s
 
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:

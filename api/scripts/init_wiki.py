@@ -104,6 +104,8 @@ def init_wiki(root: Path) -> bool:
     subprocess.run(["git", "init", "-b", "main", str(root)], check=True, capture_output=True)
     _git(root, "config", "user.email", "wiki-bot@nst-wiki.local")
     _git(root, "config", "user.name", "nst-wiki bot")
+    # 한글 파일명이 ls-tree/grep 출력에서 8진수로 quote되지 않게 (경로 링크 깨짐 방지)
+    _git(root, "config", "core.quotePath", "false")
     _git(root, "add", "-A")
     _git(root, "commit", "-m", "chore: 위키 저장소 초기화")
     return True
