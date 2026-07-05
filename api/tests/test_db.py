@@ -22,6 +22,25 @@ def test_task_roundtrip():
     assert db.get_task(task_id) is None
 
 
+def test_find_ingested_by_hash():
+    fh = "sha256:" + uuid.uuid4().hex
+    approved, failed = str(uuid.uuid4()), str(uuid.uuid4())
+    db.create_task(approved, str(uuid.uuid4()), fh)
+    db.create_task(failed, str(uuid.uuid4()), fh)
+    try:
+        db.set_status(approved, "approved")
+        db.set_status(failed, "failed")
+        # 거부·실패가 아닌 태스크만 중복으로 잡힌다 (실패본은 재업로드 허용)
+        hit = db.find_ingested_by_hash(fh)
+        assert hit is not None and hit["task_id"] == approved
+        assert db.find_ingested_by_hash("sha256:" + uuid.uuid4().hex) is None
+        db.set_status(approved, "rejected")
+        assert db.find_ingested_by_hash(fh) is None  # 전부 거부/실패면 재업로드 가능
+    finally:
+        db.delete_task(approved)
+        db.delete_task(failed)
+
+
 def _stage_tech(source_id, name, field="반도체"):
     with db.connect() as conn:
         conn.execute(

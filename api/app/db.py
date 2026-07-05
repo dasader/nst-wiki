@@ -10,12 +10,26 @@ def connect() -> psycopg.Connection:
     return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
 
 
-def create_task(task_id: str, source_id: str) -> None:
+def create_task(task_id: str, source_id: str, file_hash: str | None = None) -> None:
     with connect() as conn:
         conn.execute(
-            "INSERT INTO ingest_tasks (task_id, source_id, status) VALUES (%s, %s, 'queued')",
-            (task_id, source_id),
+            "INSERT INTO ingest_tasks (task_id, source_id, status, file_hash) "
+            "VALUES (%s, %s, 'queued', %s)",
+            (task_id, source_id, file_hash),
         )
+
+
+# 거부·실패가 아닌 상태 = 이미 인제스트됐거나 진행 중 → 재업로드 시 중복
+_ACTIVE_STATUSES = ("queued", "parsing", "classifying", "staged", "approved")
+
+
+def find_ingested_by_hash(file_hash: str) -> dict | None:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT task_id, source_id, status FROM ingest_tasks "
+            "WHERE file_hash = %s AND status = ANY(%s) ORDER BY created_at DESC LIMIT 1",
+            (file_hash, list(_ACTIVE_STATUSES)),
+        ).fetchone()
 
 
 def get_task(task_id: str) -> dict | None:

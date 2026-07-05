@@ -126,14 +126,23 @@ async def ingest(
     publisher: str = Form(""),
     publish_date: str = Form(""),
     tags: str = Form(""),
+    force: bool = Form(False),
 ):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail=f"unsupported format: {ext}")
+    data = await file.read()
+    file_hash = "sha256:" + hashlib.sha256(data).hexdigest()
+    if not force:
+        dup = db.find_ingested_by_hash(file_hash)
+        if dup:
+            raise HTTPException(status_code=409, detail=(
+                f"이미 인제스트된 문서입니다 (task {dup['task_id'][:8]}, 상태 {dup['status']}). "
+                "교체하려면 기존 태스크를 먼저 거부하거나 force=true로 다시 올리세요."
+            ))
     source_id, task_id = str(uuid.uuid4()), str(uuid.uuid4())
     src_dir = Path(os.environ.get("SOURCES_PATH", "/data/sources")) / source_id
     src_dir.mkdir(parents=True)
-    data = await file.read()
     (src_dir / f"original{ext}").write_bytes(data)
     meta = {
         "source_id": source_id,
@@ -143,12 +152,12 @@ async def ingest(
         "publish_date": publish_date,
         "ingest_date": datetime.now(timezone.utc).isoformat(),
         "tags": [t.strip() for t in tags.split(",") if t.strip()],
-        "file_hash": "sha256:" + hashlib.sha256(data).hexdigest(),
+        "file_hash": file_hash,
     }
     (src_dir / "metadata.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    db.create_task(task_id, source_id)
+    db.create_task(task_id, source_id, file_hash)
     from tasks import run_ingest  # celery 브로커 연결은 enqueue 시점에만 필요
 
     run_ingest.delay(task_id)
