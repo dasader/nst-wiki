@@ -14,6 +14,8 @@ SCHEMA_DESC = """
 - budget_history(id, project_id, fiscal_year, amount): 연도별 예산
 - policy_events(id, event_date, event_type, title, description, affected_fields): 정책 이벤트
 - ministries(id, name, abbreviation): 부처
+주의: technologies.lead_ministry, projects.lead_ministry는 부처명이 그대로 담긴 텍스트다
+(ministries.id로 조인하는 FK 아님). 부처로 거를 땐 lead_ministry LIKE '%부처명%'로 비교하라.
 """
 
 SQL_SCHEMA = {
