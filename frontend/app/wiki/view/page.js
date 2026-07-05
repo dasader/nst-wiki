@@ -8,6 +8,14 @@ function splitFrontmatter(md) {
   return m ? { front: m[1], body: md.slice(m[0].length) } : { front: null, body: md };
 }
 
+// 프론트매터에서 표시에 쓸 값만 얕게 추출 (본격 YAML 파싱 불필요)
+const field = (front, key) => front?.match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1].trim().replace(/^["']|["']$/g, "");
+
+const TYPE_LABELS = {
+  tech_concept: "기술 개념", policy_entity: "정책 엔티티", policy_event: "정책 변화",
+  synthesis: "종합 분석", source_summary: "소스 요약",
+};
+
 function linkifyWiki(md) {
   // [[tech/foo]] → 내부 링크, [[data:...]] → 데이터 탐색기 링크
   return md
@@ -17,38 +25,68 @@ function linkifyWiki(md) {
 }
 
 function Viewer() {
-  const path = useSearchParams().get("path");
+  const params = useSearchParams();
+  const path = params.get("path");
+  const fromQ = params.get("q");   // 검색에서 왔으면 그 검색으로 되돌아간다
+  const backHref = fromQ ? `/wiki?q=${encodeURIComponent(fromQ)}` : "/wiki";
+  const backLabel = fromQ ? `← ‘${fromQ}’ 검색 결과로` : "← 위키 목록";
   const [page, setPage] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     if (!path) return;
+    setPage(null); setErr(null);
     fetch(`/api/v1/wiki/page?path=${encodeURIComponent(path)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setPage, (e) => setErr(`페이지를 찾을 수 없습니다 (${e})`));
   }, [path]);
 
-  if (err) return <div className="card">{err}</div>;
-  if (!page) return <p>불러오는 중…</p>;
+  if (err) return <div className="card error">{err}</div>;
+  if (!page) return <div className="empty-state"><span className="spinner" /> 불러오는 중…</div>;
+
   const { front, body } = splitFrontmatter(page.content_md);
+  const title = field(front, "title") || page.path.split("/").pop().replace(/\.md$/, "");
+  const type = field(front, "type");
+  const nextField = field(front, "next_field");
+
   return (
     <div>
-      <p><a href="/wiki">← 위키 목록</a></p>
-      <h1>{page.path}</h1>
-      {front && <details className="card"><summary>메타데이터</summary><pre>{front}</pre></details>}
+      <p style={{ margin: "0 0 14px" }}><a href={backHref}>{backLabel}</a></p>
+
+      <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+        {type && <span className="chip">{TYPE_LABELS[type] || type}</span>}
+        {nextField && <span className="chip neutral">분야 · {nextField}</span>}
+      </div>
+      <h1 style={{ marginBottom: 4 }}>{title}</h1>
+      <p className="muted" style={{ margin: "0 0 20px", fontSize: "0.85rem", fontFamily: "var(--mono)" }}>{page.path}</p>
+
       <div className="card">
         <Markdown>{linkifyWiki(body)}</Markdown>
       </div>
+
+      {front && (
+        <details className="card reveal">
+          <summary>메타데이터 (프론트매터)</summary>
+          <pre className="code" style={{ marginTop: 10 }}>{front}</pre>
+        </details>
+      )}
+
       <div className="card">
-        <b>변경 이력</b>
-        <ul>{page.history.map((h) => (
-          <li key={h.hash}><code>{h.hash}</code> {h.date} — {h.subject}</li>
-        ))}</ul>
+        <div className="card-label" style={{ marginBottom: 10 }}>변경 이력</div>
+        <ul className="timeline">
+          {page.history.map((h) => (
+            <li key={h.hash}>
+              <span className="hash">{h.hash.slice(0, 7)}</span>
+              <span>{h.subject}</span>
+              <span className="date" style={{ marginLeft: "auto" }}>{h.date}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
 }
 
 export default function WikiView() {
-  return <Suspense fallback={<p>불러오는 중…</p>}><Viewer /></Suspense>;
+  return <Suspense fallback={<div className="empty-state"><span className="spinner" /> 불러오는 중…</div>}><Viewer /></Suspense>;
 }

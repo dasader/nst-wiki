@@ -1,5 +1,7 @@
 """조회 전용 읽기 API: 위키 목록·페이지·전문검색, 데이터 테이블 (스펙 6.1)."""
 import os
+import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -37,9 +39,39 @@ def _main_pages(root: Path) -> list[str]:
             if p.endswith(".md") and p.split("/")[0] in wiki_ops.PAGE_DIRS]
 
 
+def _page_titles(root: Path) -> dict[str, str]:
+    """각 페이지 프론트매터의 title을 한 번의 git grep으로 수집한다 (path → 한글 제목)."""
+    out = subprocess.run(
+        ["git", "-C", str(root), "grep", "--max-count=1", "-e", "^title:", "main", "--", "*.md"],
+        capture_output=True, text=True,
+    ).stdout
+    titles: dict[str, str] = {}
+    for line in out.splitlines():
+        m = re.match(r"^main:(.+?):title:\s*(.*)$", line)  # main:tech/a.md:title: 값
+        if m:
+            titles[m.group(1)] = m.group(2).strip().strip("\"'")
+    return titles
+
+
+def _parse_query(q: str) -> tuple[list[str], str]:
+    """검색 연산자 파싱. 공백=AND(모든 낱말 포함), "따옴표"=구문, `|`/`OR`=OR."""
+    try:
+        toks = shlex.split(q)          # 따옴표로 감싼 구문을 하나의 토큰으로 유지
+    except ValueError:
+        toks = q.split()
+    mode, terms = "and", []
+    for t in toks:
+        if t == "|" or t.upper() == "OR":
+            mode = "or"
+        else:
+            terms.append(t)
+    return (terms or [q.strip()]), mode
+
+
 @router.get("/wiki")
 def wiki_list():
-    return {"pages": _main_pages(_root())}
+    root = _root()
+    return {"pages": _main_pages(root), "titles": _page_titles(root)}
 
 
 @router.get("/wiki/page")
@@ -68,18 +100,26 @@ def wiki_page(path: str = Query(...)):
 
 @router.get("/wiki/search")
 def wiki_search(q: str = Query(..., min_length=1)):
-    out = subprocess.run(
-        # -e로 q를 패턴으로 강제 — q가 "-O" 등으로 시작해도 옵션(페이저 실행 계열)으로 해석되지 않게
-        # -F로 고정 문자열 검색 — 사용자 입력은 정규식이 아니라 리터럴로 취급
-        ["git", "-C", str(_root()), "grep", "-inF", "--max-count=1", "-e", q, "main", "--", "*.md"],
-        capture_output=True, text=True,
-    )
+    root = _root()
+    terms, mode = _parse_query(q)
+    # -e로 각 낱말을 패턴으로 강제 — "-O" 등으로 시작해도 옵션으로 해석되지 않게
+    # -F로 고정 문자열 검색 — 사용자 입력은 정규식이 아니라 리터럴로 취급
+    # --all-match: 여러 낱말이 모두(=AND) 포함된 파일만. OR이면 생략(git grep 기본이 OR)
+    args = ["git", "-C", str(root), "grep", "-inF", "--max-count=1"]
+    if mode == "and" and len(terms) > 1:
+        args.append("--all-match")
+    for t in terms:
+        args += ["-e", t]
+    args += ["main", "--", "*.md"]
+    out = subprocess.run(args, capture_output=True, text=True)
+    titles = _page_titles(root)
     results = []
     for line in out.stdout.splitlines()[:50]:
         # 형식: main:tech/a.md:12:내용
         parts = line.split(":", 3)
         if len(parts) >= 4:
-            results.append({"path": parts[1], "line": parts[3][:200]})
+            path = parts[1]
+            results.append({"path": path, "title": titles.get(path), "line": parts[3][:200]})
     return {"results": results}
 
 

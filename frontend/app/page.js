@@ -2,6 +2,22 @@
 import { useState } from "react";
 import Markdown from "./Markdown";
 
+const MODES = [
+  { v: "auto", label: "자동" },
+  { v: "narrative", label: "서사" },
+  { v: "data", label: "데이터" },
+  { v: "hybrid", label: "혼합" },
+];
+
+const EXAMPLES = [
+  "반도체 분야에 어떤 기술이 있어?",
+  "부처별 R&D 예산 규모를 알려줘",
+  "12개 분야가 10개로 재편된 이유는?",
+];
+
+// 근거 인용 경로를 읽기 쉬운 문서명으로: tech/hbm-semiconductor.md → hbm-semiconductor
+const citeName = (path) => path.replace(/\.md$/, "").split("/").slice(1).join("/") || path;
+
 export default function QueryPage() {
   const [q, setQ] = useState("");
   const [mode, setMode] = useState("auto");
@@ -9,14 +25,14 @@ export default function QueryPage() {
   const [res, setRes] = useState(null);
   const [err, setErr] = useState(null);
 
-  async function ask(e) {
-    e.preventDefault();
+  async function ask(question) {
+    if (!question.trim()) return;
     setBusy(true); setErr(null); setRes(null);
     try {
       const r = await fetch("/api/v1/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, mode }),
+        body: JSON.stringify({ question, mode }),
       });
       if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
       setRes(await r.json());
@@ -24,37 +40,82 @@ export default function QueryPage() {
     setBusy(false);
   }
 
+  const rows = res?.sql_rows ?? [];
+  const cols = rows.length ? Object.keys(rows[0]) : [];
+
   return (
     <div>
-      <h1>자연어 질의</h1>
-      <form onSubmit={ask} style={{ display: "flex", gap: 8 }}>
-        <input style={{ flex: 1 }} value={q} onChange={(e) => setQ(e.target.value)}
-               placeholder="예: 반도체 분야에 어떤 기술이 있어?" required />
-        <select value={mode} onChange={(e) => setMode(e.target.value)}>
-          <option value="auto">auto</option><option value="narrative">서사</option>
-          <option value="data">데이터</option><option value="hybrid">혼합</option>
-        </select>
-        <button disabled={busy}>{busy ? "질의 중…" : "질문"}</button>
-      </form>
-      {busy && <p>답변 생성 중입니다 (최초 질의는 모델 로드로 오래 걸릴 수 있음)…</p>}
-      {err && <div className="card" style={{ color: "#b3403a" }}>{err}</div>}
+      <section className="hero">
+        <span className="eyebrow">NEXT · 정책 인텔리전스</span>
+        <h1>무엇이든 물어보세요</h1>
+        <p>국가전략기술 정책 지식을 자연어로 질의하세요.</p>
+
+        <form className="ask" onSubmit={(e) => { e.preventDefault(); ask(q); }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+                 placeholder="예: 반도체 분야에 어떤 기술이 있어?" aria-label="질문" required />
+          <select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="검색 방식">
+            {MODES.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}
+          </select>
+          <button disabled={busy}>{busy ? <><span className="spinner" /> 질의 중</> : "질문"}</button>
+        </form>
+
+        {!res && !busy && (
+          <div className="examples">
+            {EXAMPLES.map((ex) => (
+              <button key={ex} type="button" onClick={() => { setQ(ex); ask(ex); }}>{ex}</button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {busy && (
+        <div className="card subtle">
+          <span className="spinner" /> 답변을 생성하고 있습니다. 최초 질의는 모델 로드로 다소 걸릴 수 있습니다.
+        </div>
+      )}
+      {err && <div className="card error">{err}</div>}
+
       {res && (
         <div>
           <div className="card"><Markdown>{res.answer}</Markdown></div>
+
           {res.citations?.length > 0 && (
-            <div className="card">근거:{" "}
-              {res.citations.map((c) => (
-                <a key={c.path} className="cite" href={`/wiki/view?path=${encodeURIComponent(c.path)}`}>
-                  [{c.path}]
-                </a>
-              ))}
+            <div className="card">
+              <div className="card-label" style={{ marginBottom: 10 }}>근거 문서</div>
+              <div className="row">
+                {res.citations.map((c) => (
+                  <a key={c.path} className="chip" href={`/wiki/view?path=${encodeURIComponent(c.path)}`}>
+                    {citeName(c.path)}
+                  </a>
+                ))}
+              </div>
             </div>
           )}
+
           {res.sql && (
             <div className="card">
-              <b>SQL</b> ({res.sql_error ? `오류: ${res.sql_error}` : `${res.sql_rows?.length ?? 0}행`})
-              <pre>{res.sql}</pre>
-              {res.sql_rows?.length > 0 && <pre>{JSON.stringify(res.sql_rows, null, 2)}</pre>}
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+                <div className="card-label">데이터 조회 결과</div>
+                <span className="chip neutral">
+                  {res.sql_error ? `오류: ${res.sql_error}` : `${rows.length}행`}
+                </span>
+              </div>
+              {rows.length > 0 && (
+                <div className="table-wrap">
+                  <div className="table-scroll">
+                    <table>
+                      <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                      <tbody>{rows.map((r, i) => (
+                        <tr key={i}>{cols.map((c) => <td key={c}>{String(r[c] ?? "")}</td>)}</tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <details className="reveal" style={{ marginTop: 12 }}>
+                <summary>실행된 SQL 쿼리 보기</summary>
+                <pre className="code">{res.sql}</pre>
+              </details>
             </div>
           )}
         </div>

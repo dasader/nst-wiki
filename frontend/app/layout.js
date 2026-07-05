@@ -1,17 +1,27 @@
 import "./globals.css";
+import Nav from "./Nav";
 
-export const metadata = { title: "NST Wiki" };
+export const metadata = {
+  title: "NST Wiki — 국가전략기술 지식베이스",
+  description: "국가전략기술(NEXT) 정책 지식을 질의·탐색하는 LLM Wiki",
+};
 
 export default function RootLayout({ children }) {
   return (
     <html lang="ko">
       <body>
-        <nav>
-          <a href="/">질의</a>
-          <a href="/wiki">위키</a>
-          <a href="/data">데이터</a>
-          <a href="http://localhost:8000/" target="_blank">승인 대시보드</a>
-        </nav>
+        <header className="site-header">
+          <div className="inner">
+            <a href="/" className="brand">
+              <span className="mark">NST</span>
+              <span className="name">
+                국가전략기술 지식베이스
+                <small>NEXT · 정책 인텔리전스</small>
+              </span>
+            </a>
+            <Nav />
+          </div>
+        </header>
         <main>{children}</main>
       </body>
     </html>
