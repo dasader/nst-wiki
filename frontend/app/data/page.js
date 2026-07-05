@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { TABLE_LABELS, tableLabel, colLabel, MONEY_COLS } from "../labels";
 
 const TABLES = Object.keys(TABLE_LABELS);
@@ -15,15 +16,17 @@ function Cell({ col, value }) {
   return String(value);
 }
 
-export default function DataExplorer() {
-  const [table, setTable] = useState("technologies");
+function DataExplorer() {
+  const sp = useSearchParams();   // 위키 [[data:테이블?컬럼=값]] 딥링크
+  const [table, setTable] = useState(() => (TABLE_LABELS[sp.get("table")] ? sp.get("table") : "technologies"));
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState(null);
   const [order, setOrder] = useState("asc");
-  const [column, setColumn] = useState("");
-  const [q, setQ] = useState("");
+  const [column, setColumn] = useState(() => sp.get("column") || "");
+  const [q, setQ] = useState(() => sp.get("q") || "");
+  const first = useRef(true);
   const limit = 50;
 
   async function load(p = page, opts = {}) {
@@ -32,13 +35,23 @@ export default function DataExplorer() {
     const params = new URLSearchParams({ page: p, limit });
     if (sb) { params.set("sort_by", sb); params.set("order", od); }
     if (col && qq) { params.set("column", col); params.set("q", qq); }
-    const r = await fetch(`/api/v1/data/${table}?${params}`);
+    let r = await fetch(`/api/v1/data/${table}?${params}`);
+    if (!r.ok && col && qq) {   // 딥링크의 컬럼이 이 테이블에 없으면 필터 버리고 테이블만
+      setColumn(""); setQ("");
+      params.delete("column"); params.delete("q");
+      r = await fetch(`/api/v1/data/${table}?${params}`);
+    }
     if (!r.ok) return;
     const b = await r.json();
     setRows(b.rows); setTotal(b.total); setPage(b.page);
   }
 
   useEffect(() => {
+    if (first.current) {   // 최초 마운트: 딥링크 필터를 살려서 로드
+      first.current = false;
+      load(1, { sortBy: null });
+      return;
+    }
     setSortBy(null); setColumn(""); setQ("");
     load(1, { column: "", q: "", sortBy: null });
   }, [table]);   // eslint-disable-line
@@ -112,4 +125,8 @@ export default function DataExplorer() {
       </div>
     </div>
   );
+}
+
+export default function DataPage() {
+  return <Suspense fallback={<div className="empty-state"><span className="spinner" /> 불러오는 중…</div>}><DataExplorer /></Suspense>;
 }

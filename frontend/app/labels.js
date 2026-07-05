@@ -47,6 +47,19 @@ export const WIKI_DIRS = {
   contradictions: { label: "모순 기록", hint: "충돌·검토 로그" },
 };
 
+// 테이블별 실존 컬럼 (api/app/read_api.py DATA_TABLES 미러). 데이터 링크 유효성 검사에 쓴다.
+export const COLUMNS = {
+  technologies: ["id", "name", "field", "sub_field", "lead_ministry", "trl_level",
+                 "description", "source_id", "created_at", "updated_at"],
+  projects: ["id", "project_code", "name", "lead_ministry", "budget_total",
+             "budget_annual", "start_year", "end_year", "status", "source_id"],
+  policy_events: ["id", "event_date", "event_type", "title", "description",
+                  "affected_fields", "source_id"],
+  ministries: ["id", "name", "abbreviation", "source_id"],
+  budget_history: ["id", "project_id", "fiscal_year", "amount", "source_id"],
+  tech_project_mapping: ["technology_id", "project_id", "relevance_score", "mapping_source"],
+};
+
 // 백만원 단위 금액 컬럼 (천 단위 구분자 + 단위 표기)
 export const MONEY_COLS = new Set(["budget_total", "budget_annual", "amount"]);
 

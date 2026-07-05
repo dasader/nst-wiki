@@ -10,6 +10,17 @@ const components = {
       <table {...props} />
     </div>
   ),
+  // linkifyWiki가 실존하지 않는 대상을 #dead-page/#dead-data로 표시 → 클릭 불가 표식으로 렌더
+  a: ({ node, href, children, ...props }) => {
+    if (href === "#dead-page" || href === "#dead-data")
+      return (
+        <span className="dead-link">
+          {children}
+          <span className="dead-tag">{href === "#dead-data" ? "없는 데이터" : "없는 문서"}</span>
+        </span>
+      );
+    return <a href={href} {...props}>{children}</a>;
+  },
 };
 
 export default function Markdown({ children }) {
