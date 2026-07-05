@@ -8,6 +8,18 @@ def test_chunk_page_splits_by_heading():
     assert chunks[1].startswith("## 배경")
 
 
+def test_chunk_page_ignores_headings_in_code_fence():
+    text = (
+        "## 개요\n\n설명입니다.\n\n"
+        "```python\n# 예제\n## 이건 헤딩 아님\nprint(1)\n```\n\n"
+        "마지막 문단"
+    )
+    chunks = embeddings.chunk_page(text)
+    assert len(chunks) == 1  # 코드펜스 안의 ## 로 분할되면 안 됨
+    assert "## 이건 헤딩 아님" in chunks[0]
+    assert "```" in chunks[0]
+
+
 def test_chunk_page_splits_long_sections():
     text = "## 긴절\n\n" + ("문단입니다. " * 40 + "\n\n") * 5  # 한 절이 max_chars 초과
     chunks = embeddings.chunk_page(text, max_chars=500)

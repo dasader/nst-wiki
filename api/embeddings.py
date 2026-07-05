@@ -27,9 +27,11 @@ def encode(texts: list[str]) -> list[dict]:
 
 
 def chunk_page(text: str, max_chars: int = 1200) -> list[str]:
-    sections, cur = [], []
+    sections, cur, in_fence = [], [], False
     for line in text.splitlines():
-        if line.startswith("## ") and cur:
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence  # 코드펜스 안의 ## 는 헤딩 아님
+        if not in_fence and line.startswith("## ") and cur:
             sections.append("\n".join(cur).strip())
             cur = []
         cur.append(line)
