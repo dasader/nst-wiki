@@ -28,20 +28,25 @@ def _write_chunks(out: Path, chunks: list[dict]) -> None:
     )
 
 
-def parse_md(src: Path, out: Path) -> None:
-    text = src.read_text(encoding="utf-8")
-    (out / "document.md").write_text(text, encoding="utf-8")
+def chunk_markdown(md: str) -> list[str]:
+    """마크다운을 헤딩(#) 경계로 분할한 비어있지 않은 섹션 리스트."""
     sections, cur = [], []
-    for line in text.splitlines():
+    for line in md.splitlines():
         if line.startswith("#") and cur:
             sections.append("\n".join(cur).strip())
             cur = []
         cur.append(line)
     if cur:
         sections.append("\n".join(cur).strip())
+    return [s for s in sections if s]
+
+
+def parse_md(src: Path, out: Path) -> None:
+    text = src.read_text(encoding="utf-8")
+    (out / "document.md").write_text(text, encoding="utf-8")
     chunks = [
         {"id": f"c{i:03d}", "type": "text", "page": None, "text": s}
-        for i, s in enumerate((s for s in sections if s), 1)
+        for i, s in enumerate(chunk_markdown(text), 1)
     ]
     _write_chunks(out, chunks)
 
