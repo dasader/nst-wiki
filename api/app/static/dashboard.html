@@ -124,6 +124,7 @@ async function uploadSequential(items) {
 function uploadOne(item) {
   return new Promise((resolve) => {
     const row = document.getElementById(`uprow-${item.id}`);
+    if (!row) return resolve();   // 업로드 중 제거된 행 — 조용히 건너뜀
     const fd = new FormData();
     fd.append("file", item.file);
     for (const inp of row.querySelectorAll("input[data-f]")) fd.append(inp.dataset.f, inp.value);
@@ -136,7 +137,8 @@ function uploadOne(item) {
     };
     xhr.onload = () => {
       if (xhr.status === 200) {
-        const tid = (JSON.parse(xhr.responseText).task_id || "").slice(0, 8);
+        let tid = "";
+        try { tid = (JSON.parse(xhr.responseText).task_id || "").slice(0, 8); } catch {}
         item.statusEl.className = "st ok";
         item.statusEl.textContent = `✓ 큐등록 (task ${tid})`;
         item.done = true;
@@ -216,7 +218,7 @@ function htmlTable(rows, table) {
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 async function act(action) {
