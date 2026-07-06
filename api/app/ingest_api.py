@@ -33,9 +33,18 @@ def require_admin(x_admin_key: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="invalid admin key")
 
 
+@router.get("/admin/verify", dependencies=[Depends(require_admin)])
+def verify_admin():
+    """로그인 게이트용 키 검증. 유효하면 200, 아니면 require_admin이 401."""
+    return {"ok": True}
+
+
 @router.get("/ingest")
 def list_ingest_tasks():
-    return {"tasks": db.list_tasks()}
+    tasks = db.list_tasks()
+    for t in tasks:   # 큐 카드용 사람 읽는 제목(디스크 metadata) — 개인 규모라 파일 N개 읽기 무해
+        t["title"] = _source_meta(t["source_id"]).get("title") or ""
+    return {"tasks": tasks}
 
 
 @router.get("/ingest/{task_id}/review")
@@ -47,6 +56,7 @@ def review(task_id: str):
     return {
         "status": task["status"],
         "source_id": task["source_id"],
+        "title": _source_meta(task["source_id"]).get("title") or "",
         "wiki_diff": wiki_ops.diff_branch(_wiki_root(), task["source_id"]),
         "staged": db.list_staged(task["source_id"]),
         "affected_pages": pages,

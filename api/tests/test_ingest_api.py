@@ -16,6 +16,15 @@ def test_ingest_requires_admin_key():
     assert r.status_code == 401
 
 
+def test_admin_verify_accepts_valid_key():
+    r = client.get("/api/v1/admin/verify", headers={"X-Admin-Key": "testkey"})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+
+
+def test_admin_verify_rejects_bad_key():
+    assert client.get("/api/v1/admin/verify", headers={"X-Admin-Key": "wrong"}).status_code == 401
+
+
 def test_ingest_rejects_unsupported_ext(tmp_path, monkeypatch):
     monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
     r = client.post(
