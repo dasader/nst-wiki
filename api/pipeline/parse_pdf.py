@@ -1,10 +1,13 @@
 """Gemini 네이티브 PDF 파싱 (Docling 대체). 2회 호출: 마크다운 + 구조화 표.
 두 호출 모두 PDF Part를 맨 앞에 둬 암묵적 캐싱을 활성화한다."""
 import json
+import logging
 from pathlib import Path
 
 import llm
 from pipeline.parse import chunk_markdown
+
+log = logging.getLogger(__name__)
 
 MD_PROMPT = (
     "이 정부 정책 PDF 문서 전체를 구조 보존 마크다운으로 변환하라.\n"
@@ -40,8 +43,12 @@ TABLE_SCHEMA = {
 }
 
 
-def _fit_cells(rows: list, n: int) -> list:
-    """LLM 셀 개수 오차 방어: 부족분 '' 패딩, 초과분 절단. (스파이크선 0건이나 방어적)"""
+def _fit_cells(rows: list, n: int, title: str = "") -> list:
+    """LLM 셀 개수 오차 방어: 부족분 '' 패딩, 초과분 절단. (스파이크선 0건이나 방어적)
+    초과 절단은 값 손실이라 조용히 넘기지 않고 경고로 남긴다 (no silent caps)."""
+    dropped = sum(len(r) - n for r in rows if len(r) > n)
+    if dropped:
+        log.warning("표 '%s': columns=%d 초과 셀 %d개 절단됨", title, n, dropped)
     return [(r + [""] * n)[:n] for r in rows]
 
 
@@ -61,7 +68,7 @@ def parse_pdf(src: Path, out: Path) -> None:
     table_chunks = []
     for i, t in enumerate(data.get("tables", []), 1):
         cols = t["columns"]
-        rows = _fit_cells([r["cells"] for r in t["rows"]], len(cols))
+        rows = _fit_cells([r["cells"] for r in t["rows"]], len(cols), t.get("table_title", ""))
         ref = f"tables/table_{i:03d}.json"
         (out / ref).write_text(
             json.dumps({"table_title": t.get("table_title", ""),

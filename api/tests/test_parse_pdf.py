@@ -12,7 +12,8 @@ def _fake_generate(purpose, contents, schema=None):
     return {"tables": [{
         "table_title": "예산", "page": 3,
         "columns": ["항목", "금액"],
-        "rows": [{"cells": ["연구", "100"]}, {"cells": ["운영"]}],  # 셀 부족 행
+        "rows": [{"cells": ["연구", "100"]}, {"cells": ["운영"]},        # 셀 부족 행
+                 {"cells": ["관리", "50", "초과"]}],                    # 셀 초과 행
     }]}
 
 
@@ -27,7 +28,8 @@ def test_parse_pdf_produces_contract(tmp_path, monkeypatch):
     # 표 파일: Docling과 동일 스키마 + 셀 정합 가드(부족분 '' 패딩)
     t = json.loads((out / "tables" / "table_001.json").read_text(encoding="utf-8"))
     assert t == {"table_title": "예산", "columns": ["항목", "금액"],
-                 "rows": [["연구", "100"], ["운영", ""]]}
+                 "rows": [["연구", "100"], ["운영", ""],   # 부족분 '' 패딩
+                          ["관리", "50"]]}                 # 초과분 절단
 
     # chunks.json: 텍스트 청크(플레이스홀더 보존) + 표 청크
     chunks = json.loads((out / "chunks.json").read_text(encoding="utf-8"))
