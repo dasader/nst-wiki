@@ -69,3 +69,20 @@ def test_resolve_config_merges_override(tmp_path, monkeypatch):
         assert llm.resolve_config("classify") == {"model": "m1", "thinking_level": "high"}
     finally:
         llm._config.cache_clear()
+
+
+def test_pdf_part_builds_pdf_mime(tmp_path):
+    import llm
+    p = tmp_path / "x.pdf"
+    p.write_bytes(b"%PDF-1.4 test")
+    part = llm.pdf_part(p)
+    assert part.inline_data.mime_type == "application/pdf"
+    assert part.inline_data.data == b"%PDF-1.4 test"
+
+
+def test_parse_purposes_use_low_thinking_and_long_timeout():
+    import llm
+    for purpose in ("parse_markdown", "parse_tables"):
+        cfg = llm.resolve_config(purpose)
+        assert cfg["thinking_level"] == "low"
+        assert cfg["timeout_ms"] == 180000

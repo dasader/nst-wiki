@@ -51,6 +51,12 @@ def image_part(path: Path):
     return types.Part.from_bytes(data=path.read_bytes(), mime_type="image/png")
 
 
+def pdf_part(path: Path):
+    from google.genai import types
+
+    return types.Part.from_bytes(data=path.read_bytes(), mime_type="application/pdf")
+
+
 def generate(purpose: str, contents, schema: dict | None = None) -> str | dict:
     from google import genai
     from google.genai import types
@@ -62,7 +68,7 @@ def generate(purpose: str, contents, schema: dict | None = None) -> str | dict:
         response_schema=schema,
     )
     client = genai.Client(  # GEMINI_API_KEY 환경변수 자동 인식
-        http_options=types.HttpOptions(timeout=_TIMEOUT_MS)
+        http_options=types.HttpOptions(timeout=cfg.get("timeout_ms", _TIMEOUT_MS))
     )
     resp = _call_with_retry(lambda: client.models.generate_content(
         model=cfg["model"], contents=contents, config=config
