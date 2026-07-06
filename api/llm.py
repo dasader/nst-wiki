@@ -45,12 +45,6 @@ def resolve_config(purpose: str) -> dict:
     return {**conf["default"], **conf.get(purpose, {})}
 
 
-def image_part(path: Path):
-    from google.genai import types
-
-    return types.Part.from_bytes(data=path.read_bytes(), mime_type="image/png")
-
-
 def pdf_part(path: Path):
     from google.genai import types
 

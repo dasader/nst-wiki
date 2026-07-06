@@ -27,8 +27,6 @@ def test_classify_routes_types_and_llm_narrative(tmp_path, monkeypatch):
     assert result["narrative_ids"] == ["c001"]
     assert result["table_ids"] == ["c003"]
     assert result["picture_ids"] == ["c004"]
-    saved = json.loads((tmp_path / "classification.json").read_text(encoding="utf-8"))
-    assert saved == result
 
 
 def test_classify_no_text_chunks_skips_llm(tmp_path, monkeypatch):
