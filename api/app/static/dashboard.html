@@ -22,6 +22,13 @@
   #reject { background: #b3403a; color: #fff; border: 0; }
   #adminkey { width: 240px; }
   .contradiction { border: 1px solid #e5c07b; background: #fdf6e3; padding: 8px; margin: 6px 0; font-size: 13px; }
+  #dropzone { border: 2px dashed #bbb; border-radius: 6px; padding: 18px; text-align: center; color: #666; cursor: pointer; font-size: 13px; margin: 6px 0; }
+  #dropzone.drag { border-color: #2a7d4f; background: #f0f8f2; }
+  .uprow { border-bottom: 1px solid #eee; padding: 6px 0; font-size: 12px; }
+  .uprow input { width: 100%; box-sizing: border-box; margin: 1px 0; padding: 2px 4px; }
+  .uprow .st { color: #555; }
+  .uprow .st.err { color: #b3403a; } .uprow .st.ok { color: #2a7d4f; }
+  .uprow .rm { float: right; cursor: pointer; color: #b3403a; border: 0; background: none; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -33,6 +40,16 @@
        <button onclick="loadPage()">불러오기</button></p>
     <textarea id="editbody" style="width:100%;height:180px;font:12px monospace"></textarea>
     <p><button onclick="savePage()" style="background:#2a7d4f;color:#fff;border:0">저장</button></p>
+  </details>
+  <details id="uploader" open>
+    <summary>문서 업로드</summary>
+    <div id="dropzone">파일을 여기로 끌어다 놓거나 클릭해 선택
+      <input id="filepick" type="file" multiple accept=".pdf,.md,.xlsx" hidden></div>
+    <div id="uprows"></div>
+    <p id="upctl" hidden>
+      <label style="font-size:12px"><input id="force" type="checkbox"> 덮어쓰기(force)</label><br>
+      <button id="uploadbtn" onclick="startUpload()" style="background:#2a7d4f;color:#fff;border:0;margin-top:6px">전체 업로드</button>
+    </p>
   </details>
   <div id="tasks"></div>
 </div>
@@ -46,6 +63,50 @@ function validateFile(file, maxMB = MAX_MB) {
   if (!ALLOWED_EXTS.includes(ext)) return `지원하지 않는 형식: ${ext || "(없음)"}`;
   if (file.size > maxMB * 1024 * 1024) return `용량 초과: ${(file.size / 1048576).toFixed(1)}MB > ${maxMB}MB`;
   return null;
+}
+const uploadQueue = [];
+let upSeq = 0;
+const dz = $("#dropzone"), pick = $("#filepick");
+dz.onclick = () => pick.click();
+pick.onchange = () => { addFiles(pick.files); pick.value = ""; };
+dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("drag"); };
+dz.ondragleave = () => dz.classList.remove("drag");
+dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove("drag"); addFiles(e.dataTransfer.files); };
+
+function addFiles(fileList) {
+  for (const file of fileList) {
+    const item = { file, id: ++upSeq };
+    uploadQueue.push(item);
+    renderRow(item);
+  }
+  $("#upctl").hidden = uploadQueue.length === 0;
+}
+
+function baseName(name) { return name.replace(/\.[^.]+$/, ""); }
+
+function renderRow(item) {
+  const err = validateFile(item.file);
+  const row = document.createElement("div");
+  row.className = "uprow";
+  row.id = `uprow-${item.id}`;
+  row.innerHTML = `
+    <button class="rm" title="제거" onclick="removeRow(${item.id})">✕</button>
+    <b>${escapeHtml(item.file.name)}</b> <small>(${(item.file.size/1048576).toFixed(1)}MB)</small>
+    <input data-f="title" placeholder="제목" value="${escapeHtml(baseName(item.file.name))}">
+    <input data-f="publisher" placeholder="발행기관">
+    <input data-f="tags" placeholder="태그(쉼표구분)">
+    <input data-f="publish_date" placeholder="발행일 예: 2026">
+    <div class="st ${err ? "err" : ""}">${err ? escapeHtml(err) : "대기"}</div>`;
+  $("#uprows").appendChild(row);
+  item.statusEl = row.querySelector(".st");
+  item.invalid = !!err;
+}
+
+function removeRow(id) {
+  const i = uploadQueue.findIndex(x => x.id === id);
+  if (i >= 0) uploadQueue.splice(i, 1);
+  document.getElementById(`uprow-${id}`)?.remove();
+  $("#upctl").hidden = uploadQueue.length === 0;
 }
 const keyInput = $("#adminkey");
 keyInput.value = localStorage.getItem("adminkey") || "";
