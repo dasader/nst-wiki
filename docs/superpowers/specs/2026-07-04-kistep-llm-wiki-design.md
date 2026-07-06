@@ -496,7 +496,7 @@ volumes:
 
 ### 8.2 Proxmox 환경 통합
 
-- Nginx Proxy Manager(NPM): 기존 인스턴스에서 `nst-wiki.mem.photos` 서브도메인을 frontend(3000)/api(8000) 포트로 라우팅
+- Nginx Proxy Manager(NPM): 기존 인스턴스에서 `wiki.example.com` 서브도메인을 frontend(3000)/api(8000) 포트로 라우팅
 - Cloudflare 와일드카드 SSL: 기존 설정 활용
 - 호스트 CPU: AMD Ryzen 7 H 255 (Hawk Point, 8코어/16스레드, Radeon 780M iGPU)
 
@@ -514,7 +514,7 @@ volumes:
 
 개인 사용 전제로 로그인 체계는 두지 않는다.
 
-- **리버스 프록시 경계**: 서비스는 NPM 뒤 `nst-wiki.mem.photos`로 노출된다. 인터넷에서 접근 가능한 주소이므로, 필요 시 NPM의 Access List(IP 제한) 또는 Basic Auth로 접근을 제한한다
+- **리버스 프록시 경계**: 서비스는 NPM 뒤 `wiki.example.com`로 노출된다. 인터넷에서 접근 가능한 주소이므로, 필요 시 NPM의 Access List(IP 제한) 또는 Basic Auth로 접근을 제한한다
 - **admin key**: 변경성 엔드포인트(`POST /ingest`, approve/reject, lint 트리거)는 `X-Admin-Key` 헤더 필수. 키는 환경변수 `ADMIN_API_KEY`로 주입
 - 조회성 엔드포인트(위키 열람, 질의, 데이터 탐색)는 앱 수준 인증 없음. 단, `POST /query`는 LLM 호출 비용을 유발하므로 IP 기준 rate limit을 둔다
 

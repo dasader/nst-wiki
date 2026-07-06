@@ -632,7 +632,7 @@ curl http://localhost:8000/health
 
 | 서비스 | 포트 | 역할 |
 |---|---|---|
-| api | 8000 | FastAPI (NPM이 nst-wiki.mem.photos로 프록시) |
+| api | 8000 | FastAPI (NPM이 wiki.example.com로 프록시) |
 | postgres | - | 정형 데이터 (public) + 승인 대기 (staging) |
 | qdrant | - | 벡터 검색 (Phase 4부터 사용) |
 | redis | - | Celery 큐 (Phase 2부터 사용) |
