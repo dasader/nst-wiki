@@ -46,14 +46,15 @@ curl http://localhost:8000/api/v1/ingest/<task_id>/status
 # → {"status": "staged", ...}
 ```
 
-지원 포맷: PDF(기본), MD(사전 변환 문서), XLSX(사업·기관 목록). 파싱 산출물은
-`sources-data` 볼륨의 `{source_id}/parsed/`에 생성된다.
-파싱 후 Gemini가 내용을 분류·해석하여 서사는 위키 스테이징 브랜치(`ingest/{source_id}`)에,
+지원 포맷: PDF(기본), MD(사전 변환 문서), XLSX(사업·기관 목록). PDF는 Gemini
+네이티브 파싱(마크다운 + 구조화 표 2-call)으로 처리한다 — 별도 OCR·Docling 불필요.
+파싱 산출물은 `sources-data` 볼륨의 `{source_id}/parsed/`에 생성된다.
+이어 Gemini가 내용을 분류·해석하여 서사는 위키 스테이징 브랜치(`ingest/{source_id}`)에,
 표는 PostgreSQL `staging` 스키마에 적재한다 (status: `staged`).
 
-**승인 대시보드**: http://localhost:8000/ — staged 태스크의 위키 diff·staging 데이터·모순을
-검토하고 승인(위키 main 병합 + DB 반영) 또는 거부한다. 자연어 질의는 아래 참조.
-`.env`에 `GEMINI_API_KEY` 필수.
+**승인 대시보드**: http://localhost:8000/ — 문서 업로드(드래그·드롭), staged 태스크의
+위키 diff·staging 데이터·모순 검토, 승인(위키 main 병합 + DB 반영)/거부, 소스 삭제·
+위키 페이지 편집까지 한 화면에서 처리한다. `.env`에 `GEMINI_API_KEY` 필수.
 
 ## 자연어 질의
 
@@ -67,8 +68,15 @@ curl -X POST http://localhost:8000/api/v1/query -H "Content-Type: application/js
 
 ## 테스트
 
+pytest는 런타임 이미지에 없으므로 빌드된 api 이미지에 얹어 실행한다(DB 필요한
+테스트는 postgres 기동 후 컴포즈 네트워크에 붙인다). 자세한 명령은 `CLAUDE.md` 참조.
+
 ```bash
-cd api && uv run --with pytest --with fastapi --with httpx --with redis --with "psycopg[binary]" --with "celery[redis]" --with pandas --with openpyxl --with python-multipart --with qdrant-client --with google-genai --no-project python -m pytest tests -v
+docker compose up -d postgres
+docker run --rm --network nst-wiki_default -v "$PWD/api:/app" -w /app \
+  -e DATABASE_URL="postgresql://wiki:devpass@postgres:5432/llm_wiki" \
+  -e READONLY_DATABASE_URL="postgresql://wiki_ro:ro_devpass@postgres:5432/llm_wiki" \
+  nst-wiki-api:latest sh -c "pip install -q pytest && python -m pytest -q"
 ```
 
 ## 웹 UI
