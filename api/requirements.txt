@@ -6,9 +6,6 @@ celery[redis]>=5.4
 python-multipart
 pandas>=2.2
 openpyxl>=3.1
-docling>=2.15,<3
-easyocr
-opencv-python-headless>=4.8
 google-genai
 qdrant-client
 FlagEmbedding>=1.2

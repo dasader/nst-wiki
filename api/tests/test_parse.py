@@ -3,7 +3,17 @@ import json
 import pandas as pd
 import pytest
 
-from pipeline.parse import parse_md, parse_xlsx, run_pipeline
+from pipeline.parse import chunk_markdown, parse_md, parse_xlsx, run_pipeline
+
+
+def test_chunk_markdown_splits_on_headings():
+    md = "머리말\n# 1장\n가나다\n## 1.1\n라마바\n# 2장\n사아자"
+    secs = chunk_markdown(md)
+    assert secs[0] == "머리말"
+    assert secs[1].startswith("# 1장")
+    assert any("## 1.1" in s for s in secs)
+    assert secs[-1].startswith("# 2장")
+    assert "" not in secs  # 빈 섹션 제거
 
 
 def test_parse_md_splits_by_heading(tmp_path):
