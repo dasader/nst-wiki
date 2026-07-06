@@ -39,6 +39,14 @@
 <div id="detail"><p>왼쪽에서 태스크를 선택하세요.</p></div>
 <script>
 const $ = (s) => document.querySelector(s);
+const ALLOWED_EXTS = [".pdf", ".md", ".xlsx"];   // 서버 ALLOWED_EXTS와 동일
+const MAX_MB = 50;   // ponytail: 개인용 기본값, 서버가 거부하면 상향
+function validateFile(file, maxMB = MAX_MB) {
+  const ext = (file.name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  if (!ALLOWED_EXTS.includes(ext)) return `지원하지 않는 형식: ${ext || "(없음)"}`;
+  if (file.size > maxMB * 1024 * 1024) return `용량 초과: ${(file.size / 1048576).toFixed(1)}MB > ${maxMB}MB`;
+  return null;
+}
 const keyInput = $("#adminkey");
 keyInput.value = localStorage.getItem("adminkey") || "";
 keyInput.addEventListener("change", () => localStorage.setItem("adminkey", keyInput.value));
