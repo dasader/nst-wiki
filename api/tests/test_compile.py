@@ -21,7 +21,6 @@ def test_compile_source_full_flow(tmp_path, monkeypatch):
 
     monkeypatch.setattr(compile_mod.classify, "classify_chunks",
                         lambda p: {"narrative_ids": ["c001"], "table_ids": [], "picture_ids": []})
-    monkeypatch.setattr(compile_mod.describe, "describe_figures", lambda p, t: [])
     monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
                         lambda p, s: {"staged": [], "needs_review": 0})
     monkeypatch.setattr(compile_mod.narrative, "compile_narrative",
@@ -53,7 +52,6 @@ def test_compile_source_no_narrative(tmp_path, monkeypatch):
     ], ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(compile_mod.classify, "classify_chunks",
                         lambda p: {"narrative_ids": [], "table_ids": ["c001"], "picture_ids": []})
-    monkeypatch.setattr(compile_mod.describe, "describe_figures", lambda p, t: [])
     monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
                         lambda p, s: {"staged": [{"table": "technologies", "rows": 2}], "needs_review": 0})
     out = compile_mod.compile_source(src, str(uuid.uuid4()), wiki)
@@ -74,7 +72,6 @@ def test_compile_source_ignores_phantom_chunk_ids(tmp_path, monkeypatch):
     ], ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(compile_mod.classify, "classify_chunks",
                         lambda p: {"narrative_ids": ["c001", "c999"], "table_ids": [], "picture_ids": []})
-    monkeypatch.setattr(compile_mod.describe, "describe_figures", lambda p, t: [])
     monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
                         lambda p, s: {"staged": [], "needs_review": 0})
     received = {}
