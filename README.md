@@ -21,8 +21,8 @@ curl http://localhost:8000/health
 
 | 서비스 | 포트 | 역할 |
 |---|---|---|
-| frontend | 3000 | Next.js UI — 질의·위키 브라우저·데이터 탐색기 (NPM이 nst-wiki.mem.photos로 프록시) |
-| api | 8000 | FastAPI (NPM이 nst-wiki.mem.photos로 프록시) |
+| frontend | 3000 | Next.js UI — 질의·위키 브라우저·데이터 탐색기 (리버스 프록시로 노출) |
+| api | 8000 | FastAPI (리버스 프록시로 노출) |
 | postgres | - | 정형 데이터 (public) + 승인 대기 (staging) |
 | qdrant | - | 벡터 검색 (Phase 4부터 사용) |
 | redis | - | Celery 큐 (Phase 2부터 사용) |
@@ -84,6 +84,6 @@ docker run --rm --network nst-wiki_default -v "$PWD/api:/app" -w /app \
 http://localhost:3000 — 자연어 질의(/), 위키 브라우저(/wiki), 데이터 탐색기(/data).
 승인 대시보드는 http://localhost:8000/ (admin key 필요).
 
-NPM 연동: `nst-wiki.mem.photos` → 호스트 3000 (UI). 승인 대시보드·API를 외부에서 쓰려면
-별도 서브도메인 또는 경로로 호스트 8000을 추가 프록시하고 Access List를 걸 것.
-3000 포트 UI도 무인증 질의(/api/v1/query)가 프록시되므로 외부 공개 시 NPM Access List를 함께 걸 것.
+리버스 프록시(예: Nginx Proxy Manager)로 호스트 3000(UI)을 노출한다. 승인 대시보드·API를
+외부에서 쓰려면 별도 서브도메인 또는 경로로 호스트 8000을 추가 프록시하고 Access List를 걸 것.
+3000 포트 UI도 무인증 질의(/api/v1/query)가 프록시되므로 외부 공개 시 Access List를 함께 걸 것.

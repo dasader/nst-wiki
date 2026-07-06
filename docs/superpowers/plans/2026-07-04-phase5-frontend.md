@@ -712,7 +712,7 @@ Expected: 77 passed (백엔드 회귀)
 `## 구성` 표의 api 행 앞에 frontend 행 추가:
 
 ```markdown
-| frontend | 3000 | Next.js UI — 질의·위키 브라우저·데이터 탐색기 (NPM이 nst-wiki.mem.photos로 프록시) |
+| frontend | 3000 | Next.js UI — 질의·위키 브라우저·데이터 탐색기 (NPM이 wiki.example.com로 프록시) |
 ```
 
 그리고 문서 끝(테스트 섹션 뒤)에 추가:
@@ -723,7 +723,7 @@ Expected: 77 passed (백엔드 회귀)
 http://localhost:3000 — 자연어 질의(/), 위키 브라우저(/wiki), 데이터 탐색기(/data).
 승인 대시보드는 http://localhost:8000/ (admin key 필요).
 
-NPM 연동: `nst-wiki.mem.photos` → 호스트 3000 (UI). 승인 대시보드·API를 외부에서 쓰려면
+NPM 연동: `wiki.example.com` → 호스트 3000 (UI). 승인 대시보드·API를 외부에서 쓰려면
 별도 서브도메인 또는 경로로 호스트 8000을 추가 프록시하고 Access List를 걸 것.
 ```
 
