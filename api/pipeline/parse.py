@@ -1,4 +1,4 @@
-"""Stage 0 포맷 분기 + MD/XLSX 파싱. PDF는 parse_pdf 모듈(도클링)로 위임."""
+"""Stage 0 포맷 분기 + MD/XLSX 파싱. PDF는 parse_pdf 모듈로 위임."""
 import json
 from pathlib import Path
 
@@ -11,7 +11,7 @@ def run_pipeline(source_dir: Path) -> None:
     out.mkdir(exist_ok=True)
     ext = original.suffix.lower()
     if ext == ".pdf":
-        from pipeline.parse_pdf import parse_pdf  # docling 임포트는 무거워서 지연
+        from pipeline.parse_pdf import parse_pdf  # 무거운 파싱 의존은 지연 임포트
 
         parse_pdf(original, out)
     elif ext == ".md":
