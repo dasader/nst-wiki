@@ -108,6 +108,50 @@ function removeRow(id) {
   document.getElementById(`uprow-${id}`)?.remove();
   $("#upctl").hidden = uploadQueue.length === 0;
 }
+
+function startUpload() {
+  if (!keyInput.value) return alert("Admin Key를 먼저 입력하세요.");
+  uploadSequential(uploadQueue.filter(x => !x.invalid && !x.done));
+}
+
+// ponytail: 순차, 배치 커지면 병렬화
+async function uploadSequential(items) {
+  $("#uploadbtn").disabled = true;
+  try { for (const item of items) await uploadOne(item); }
+  finally { $("#uploadbtn").disabled = false; await loadList(); }
+}
+
+function uploadOne(item) {
+  return new Promise((resolve) => {
+    const row = document.getElementById(`uprow-${item.id}`);
+    const fd = new FormData();
+    fd.append("file", item.file);
+    for (const inp of row.querySelectorAll("input[data-f]")) fd.append(inp.dataset.f, inp.value);
+    fd.append("force", $("#force").checked ? "true" : "false");
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/ingest");
+    xhr.setRequestHeader("X-Admin-Key", keyInput.value);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) item.statusEl.textContent = `업로드중 ${Math.round(e.loaded / e.total * 100)}%`;
+    };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        const tid = (JSON.parse(xhr.responseText).task_id || "").slice(0, 8);
+        item.statusEl.className = "st ok";
+        item.statusEl.textContent = `✓ 큐등록 (task ${tid})`;
+        item.done = true;
+      } else {
+        item.statusEl.className = "st err";
+        item.statusEl.textContent = `✗ ${xhr.status} ${xhr.responseText.slice(0, 200)}`;
+      }
+      resolve();
+    };
+    xhr.onerror = () => { item.statusEl.className = "st err"; item.statusEl.textContent = "✗ 네트워크 오류"; resolve(); };
+    item.statusEl.className = "st";
+    xhr.send(fd);
+  });
+}
+
 const keyInput = $("#adminkey");
 keyInput.value = localStorage.getItem("adminkey") || "";
 keyInput.addEventListener("change", () => localStorage.setItem("adminkey", keyInput.value));
