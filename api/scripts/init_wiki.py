@@ -3,29 +3,9 @@ import os
 import subprocess
 from pathlib import Path
 
+import wiki_ops
+
 DIRS = ["tech", "entity", "events", "synthesis", "summaries", "contradictions"]
-
-INDEX_MD = """\
-# NST Wiki 색인
-
-국가전략기술 정책 지식 위키. 페이지가 생성·갱신되면 이 색인도 함께 갱신한다.
-
-## tech (기술 개념)
-
-(아직 페이지 없음)
-
-## entity (정책 엔티티)
-
-(아직 페이지 없음)
-
-## events (정책변화 이력)
-
-(아직 페이지 없음)
-
-## synthesis (종합·비교 분석)
-
-(아직 페이지 없음)
-"""
 
 SCHEMA_MD = """\
 # 위키 운영 규칙 (LLM 컴파일 규칙서)
@@ -98,7 +78,7 @@ def init_wiki(root: Path) -> bool:
     root.mkdir(parents=True, exist_ok=True)
     for d in DIRS:
         (root / d).mkdir(exist_ok=True)
-    (root / "index.md").write_text(INDEX_MD, encoding="utf-8")
+    (root / "index.md").write_text(wiki_ops.rebuild_index(root), encoding="utf-8")
     (root / "schema.md").write_text(SCHEMA_MD, encoding="utf-8")
     (root / "contradictions" / "log.md").write_text(LOG_MD, encoding="utf-8")
     subprocess.run(["git", "init", "-b", "main", str(root)], check=True, capture_output=True)

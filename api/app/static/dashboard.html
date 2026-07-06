@@ -5,55 +5,210 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nst-wiki 승인 대시보드</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; }
-  #list { width: 340px; border-right: 1px solid #ccc; overflow-y: auto; padding: 12px; }
-  #detail { flex: 1; overflow-y: auto; padding: 16px 24px; }
-  .task { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px; }
-  .task:hover { background: #f5f5f5; }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; color: #fff; }
-  .b-staged { background: #b58900; } .b-approved { background: #2a7d4f; }
-  .b-rejected { background: #b3403a; } .b-failed { background: #777; }
-  .b-parsing, .b-classifying, .b-queued { background: #4a76c9; }
-  pre { background: #f6f6f6; padding: 12px; overflow-x: auto; font-size: 12px; }
-  table { border-collapse: collapse; font-size: 12px; margin: 8px 0; }
-  th, td { border: 1px solid #ddd; padding: 4px 8px; }
-  button { padding: 8px 20px; margin-right: 8px; cursor: pointer; }
-  #approve { background: #2a7d4f; color: #fff; border: 0; }
-  #reject { background: #b3403a; color: #fff; border: 0; }
-  #adminkey { width: 240px; }
-  .contradiction { border: 1px solid #e5c07b; background: #fdf6e3; padding: 8px; margin: 6px 0; font-size: 13px; }
-  #dropzone { border: 2px dashed #bbb; border-radius: 6px; padding: 18px; text-align: center; color: #666; cursor: pointer; font-size: 13px; margin: 6px 0; }
-  #dropzone.drag { border-color: #2a7d4f; background: #f0f8f2; }
-  .uprow { border-bottom: 1px solid #eee; padding: 6px 0; font-size: 12px; }
-  .uprow input { width: 100%; box-sizing: border-box; margin: 1px 0; padding: 2px 4px; }
-  .uprow .st { color: #555; }
-  .uprow .st.err { color: #b3403a; } .uprow .st.ok { color: #2a7d4f; }
-  .uprow .rm { float: right; cursor: pointer; color: #b3403a; border: 0; background: none; font-size: 14px; }
+  /* 프런트엔드(globals.css)와 동일한 토큰·타이포로 통일. ponytail: 별도 오리진이라 import 불가 → 인라인 */
+  @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --surface-2: #f8fafc;
+    --ink: #1a2430; --ink-2: #516072; --ink-3: #8a97a6;
+    --line: #e4e9f0; --line-strong: #d3dae3;
+    --accent: #0b6e75; --accent-strong: #095a60; --accent-tint: #e7f1f1;
+    --danger: #b23a3a; --danger-tint: #fbeeed;
+    --amber: #8a6100; --amber-tint: #fdf3d9;
+    --info: #2c5cc4; --info-tint: #e9f0fd;
+    --success: #1c7a45; --success-tint: #e6f4ec;
+    --radius: 12px; --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(20,39,63,.04), 0 2px 8px rgba(20,39,63,.05);
+    --font: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "D2Coding", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.6;
+    color: var(--ink); background: var(--bg);
+    -webkit-font-smoothing: antialiased; word-break: keep-all;
+  }
+
+  /* ── 헤더 ─────────────────────────────── */
+  .site-header {
+    height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    background: rgba(255,255,255,.9); backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30;
+  }
+  .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+  .brand .mark {
+    width: 28px; height: 28px; border-radius: 8px; color: #fff;
+    background: linear-gradient(135deg, var(--accent), #0f8a86);
+    display: grid; place-items: center; font-weight: 800; font-size: 13px; letter-spacing: -.02em;
+  }
+  .brand .name { font-weight: 700; font-size: 14px; letter-spacing: -.01em; }
+  .brand .name small { display: block; font-weight: 500; font-size: 10px; color: var(--ink-3); letter-spacing: .02em; }
+  .header-tag { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent-strong); background: var(--accent-tint); padding: 4px 11px; border-radius: 999px; }
+
+  /* ── 2단 레이아웃 ─────────────────────── */
+  .app { display: flex; height: calc(100vh - 56px); }
+  .sidebar { width: 360px; flex: 0 0 360px; border-right: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 18px 16px; }
+  .detail { flex: 1; overflow-y: auto; padding: 24px 28px; background: var(--bg); }
+
+  .eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+  .field-label { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 0 0 5px; }
+
+  /* 접이식 패널(편집·업로드) */
+  .panel { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); margin: 14px 0; overflow: hidden; }
+  .panel > summary { cursor: pointer; list-style: none; padding: 11px 12px; font-weight: 600; font-size: 13px; color: var(--ink); display: flex; align-items: center; gap: 7px; }
+  .panel > summary::-webkit-details-marker { display: none; }
+  .panel > summary::before { content: "▸"; font-size: .8em; color: var(--ink-3); transition: transform .15s; }
+  .panel[open] > summary::before { transform: rotate(90deg); }
+  .panel-body { padding: 0 12px 12px; }
+  .fld { display: flex; gap: 6px; margin-bottom: 6px; }
+
+  /* ── 폼 ───────────────────────────────── */
+  input, select, textarea {
+    font: inherit; color: var(--ink); width: 100%;
+    padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    background: var(--surface); transition: border-color .15s, box-shadow .15s;
+  }
+  input::placeholder { color: var(--ink-3); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+  textarea { font-family: var(--mono); font-size: 12px; line-height: 1.55; resize: vertical; }
+  label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  label.inline input { width: auto; }
+
+  /* ── 버튼 ─────────────────────────────── */
+  button, .btn {
+    font: inherit; font-weight: 600; font-size: .9rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 16px; border: 1px solid transparent; border-radius: var(--radius-sm);
+    background: var(--accent); color: #fff; cursor: pointer;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  button:hover, .btn:hover { background: var(--accent-strong); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-tint); }
+  .btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+  .btn-ghost:hover { background: var(--surface-2); border-color: var(--ink-3); }
+  .btn-danger { background: var(--danger); } .btn-danger:hover { background: #9a3030; }
+  .btn-sm { padding: 6px 11px; font-size: .82rem; }
+  #approve { background: var(--success); } #approve:hover { background: #166638; }
+  #reject { background: var(--danger); } #reject:hover { background: #9a3030; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
+
+  /* ── 업로드 드롭존/행 ─────────────────── */
+  #dropzone {
+    border: 1.5px dashed var(--line-strong); border-radius: var(--radius-sm);
+    padding: 20px 14px; text-align: center; color: var(--ink-3); cursor: pointer; font-size: 13px;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  #dropzone:hover { border-color: var(--accent); color: var(--ink-2); }
+  #dropzone.drag { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-strong); }
+  .uprow { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 10px 12px; margin: 8px 0; font-size: 12px; position: relative; }
+  .uprow b { font-size: 13px; }
+  .uprow input { margin: 5px 0 0; padding: 6px 8px; font-size: 12px; }
+  .uprow .rm { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; background: none; color: var(--ink-3); border: 0; font-size: 14px; line-height: 1; }
+  .uprow .rm:hover { background: var(--danger-tint); color: var(--danger); }
+  .uprow .st { margin-top: 7px; color: var(--ink-2); font-weight: 500; }
+  .uprow .st.err { color: var(--danger); } .uprow .st.ok { color: var(--success); }
+
+  /* ── 태스크 목록 ──────────────────────── */
+  #tasks { margin-top: 6px; }
+  .task {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--surface); margin: 6px 0; cursor: pointer; font-size: 12px;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .task:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+  .task code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .task small { color: var(--ink-3); width: 100%; }
+
+  /* ── 상태 배지(칩) ────────────────────── */
+  .badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+  .b-staged { background: var(--amber-tint); color: var(--amber); }
+  .b-approved { background: var(--success-tint); color: var(--success); }
+  .b-rejected { background: var(--danger-tint); color: var(--danger); }
+  .b-failed { background: var(--surface-2); color: var(--ink-3); }
+  .b-parsing, .b-classifying, .b-queued { background: var(--info-tint); color: var(--info); }
+
+  /* ── 상세 패널 ────────────────────────── */
+  .detail h2 { font-size: 1.25rem; margin: 0 0 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; letter-spacing: -.01em; }
+  .detail h2 .badge { font-size: 12px; }
+  .detail h3 { font-size: 1rem; margin: 22px 0 8px; }
+  .detail h4 { font-size: .9rem; margin: 16px 0 6px; color: var(--ink-2); }
+  .detail ul { padding-left: 1.2em; }
+  .detail .placeholder { color: var(--ink-3); text-align: center; padding: 56px 0; }
+
+  /* 데이터 밀집 표: 촘촘하게 + 가로 스크롤 래퍼 */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); margin: 8px 0; }
+  .detail table { border-collapse: collapse; font-size: 12px; width: 100%; font-variant-numeric: tabular-nums; }
+  .detail th { background: var(--surface-2); color: var(--ink-2); font-weight: 700; text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  .detail td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .detail tr:last-child td { border-bottom: 0; }
+  .detail pre { background: #0f1b26; color: #d6e2ec; padding: 14px 16px; border-radius: var(--radius-sm); overflow-x: auto; font-size: 12px; line-height: 1.55; font-family: var(--mono); }
+
+  .contradiction {
+    border: 1px solid #ecd9a3; border-left: 3px solid var(--amber); background: var(--amber-tint);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 12px 14px; margin: 8px 0; font-size: 13px;
+  }
+  .contradiction label { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; font-size: 12px; color: var(--ink-2); }
+  .contradiction input { width: auto; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .001ms !important; } }
+
+  /* ── 반응형: 좁은 화면에서 세로 스택 ──── */
+  @media (max-width: 860px) {
+    .app { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; flex: none; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+    .detail { overflow: visible; padding: 20px 16px; }
+  }
 </style>
 </head>
 <body>
-<div id="list">
-  <p><input id="adminkey" type="password" placeholder="Admin Key"></p>
-  <details id="editor">
-    <summary>위키 페이지 편집</summary>
-    <p><input id="editpath" placeholder="tech/hbm.md" style="width:200px">
-       <button onclick="loadPage()">불러오기</button></p>
-    <textarea id="editbody" style="width:100%;height:180px;font:12px monospace"></textarea>
-    <p><button onclick="savePage()" style="background:#2a7d4f;color:#fff;border:0">저장</button></p>
-  </details>
-  <details id="uploader" open>
-    <summary>문서 업로드</summary>
-    <div id="dropzone">파일을 여기로 끌어다 놓거나 클릭해 선택
-      <input id="filepick" type="file" multiple accept=".pdf,.md,.xlsx" hidden></div>
-    <div id="uprows"></div>
-    <p id="upctl" hidden>
-      <label style="font-size:12px"><input id="force" type="checkbox"> 덮어쓰기(force)</label><br>
-      <button id="uploadbtn" onclick="startUpload()" style="background:#2a7d4f;color:#fff;border:0;margin-top:6px">전체 업로드</button>
-    </p>
-  </details>
-  <div id="tasks"></div>
+<header class="site-header">
+  <a href="/" class="brand">
+    <span class="mark">NST</span>
+    <span class="name">국가전략기술 지식베이스<small>NEXT · 정책 인텔리전스</small></span>
+  </a>
+  <span class="header-tag">승인 대시보드</span>
+</header>
+<div class="app">
+  <aside class="sidebar" id="list">
+    <span class="eyebrow">관리자 인증</span>
+    <p class="field-label">Admin Key</p>
+    <input id="adminkey" type="password" placeholder="관리 키를 입력하세요" autocomplete="off">
+
+    <details class="panel" id="editor">
+      <summary>위키 페이지 편집</summary>
+      <div class="panel-body">
+        <div class="fld">
+          <input id="editpath" placeholder="tech/hbm.md" style="flex:1;min-width:0">
+          <button class="btn-ghost btn-sm" style="flex:none" onclick="loadPage()">불러오기</button>
+        </div>
+        <textarea id="editbody" style="height:180px"></textarea>
+        <button style="width:100%;margin-top:8px" onclick="savePage()">저장</button>
+      </div>
+    </details>
+
+    <details class="panel" id="uploader" open>
+      <summary>문서 업로드</summary>
+      <div class="panel-body">
+        <div id="dropzone">파일을 여기로 끌어다 놓거나 클릭해 선택
+          <input id="filepick" type="file" multiple accept=".pdf,.md,.xlsx" hidden></div>
+        <div id="uprows"></div>
+        <div id="upctl" hidden style="margin-top:8px">
+          <label class="inline"><input id="force" type="checkbox"> 기존 문서 덮어쓰기(force)</label>
+          <button id="uploadbtn" style="width:100%;margin-top:8px" onclick="startUpload()">전체 업로드</button>
+        </div>
+      </div>
+    </details>
+
+    <span class="eyebrow" style="margin-top:20px">승인 대기 · 처리 이력</span>
+    <div id="tasks"></div>
+  </aside>
+  <section class="detail" id="detail">
+    <p class="placeholder">왼쪽에서 태스크를 선택하면 검토 내용이 표시됩니다.</p>
+  </section>
 </div>
-<div id="detail"><p>왼쪽에서 태스크를 선택하세요.</p></div>
 <script>
 const $ = (s) => document.querySelector(s);
 const ALLOWED_EXTS = [".pdf", ".md", ".xlsx"];   // 서버 ALLOWED_EXTS와 동일
@@ -192,10 +347,10 @@ async function openTask(taskId) {
     </div>`).join("");
   const suggestions = (r.suggestions || []).map(s => `<li>${escapeHtml(String(s.path))} (${escapeHtml(String(s.action))})</li>`).join("");
   const actions = r.status === "staged"
-    ? `<p><button id="approve" onclick="act('approve')">승인</button>
-       <button id="reject" onclick="act('reject')">거부</button></p>`
-    : `<p><button onclick="deleteSource()" style="background:#b3403a;color:#fff;border:0;padding:8px 20px">소스 삭제 (un-ingest)</button>
-       <button onclick="downloadOriginal()">원본 다운로드</button></p>`;
+    ? `<div class="actions"><button id="approve" onclick="act('approve')">승인</button>
+       <button id="reject" onclick="act('reject')">거부</button></div>`
+    : `<div class="actions"><button class="btn-danger" onclick="deleteSource()">소스 삭제 (un-ingest)</button>
+       <button class="btn-ghost" onclick="downloadOriginal()">원본 다운로드</button></div>`;
   $("#detail").innerHTML = `
     <h2><span class="badge b-${r.status}">${r.status}</span> ${taskId}</h2>
     ${actions}
@@ -214,7 +369,7 @@ function htmlTable(rows, table) {
     const cb = excl ? `<td><input type="checkbox" class="excl" data-table="${escapeHtml(table)}" data-id="${escapeHtml(String(r.id))}"></td>` : "";
     return `<tr>${cb}${cols.map(c => { const v = r[c]; const s = v !== null && typeof v === "object" ? JSON.stringify(v) : String(v ?? ""); return `<td>${escapeHtml(s)}</td>`; }).join("")}</tr>`;
   }).join("");
-  return `<table><tr>${head}</tr>${body}</table>`;
+  return `<div class="tbl-wrap"><table><tr>${head}</tr>${body}</table></div>`;
 }
 
 function escapeHtml(s) {

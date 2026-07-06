@@ -46,7 +46,4 @@ def classify_chunks(parsed_dir: Path) -> dict:
         result["narrative_ids"] = [
             x["id"] for x in out["classifications"] if x["category"] == "NARRATIVE"
         ]
-    (parsed_dir / "classification.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
     return result
