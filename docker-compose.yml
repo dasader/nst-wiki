@@ -2,7 +2,7 @@ services:
   api:
     build: ./api
     restart: unless-stopped
-    ports: ["8000:8000"]              # NPM이 프록시할 포트
+    ports: ["8033:8000"]              # NPM이 프록시할 포트 (host 8033 → NPM upstream 갱신 필요)
     environment:
       - DATABASE_URL=postgresql://wiki:${POSTGRES_PASSWORD:-devpass}@postgres:5432/llm_wiki
       - READONLY_DATABASE_URL=postgresql://wiki_ro:ro_devpass@postgres:5432/llm_wiki
@@ -74,7 +74,7 @@ services:
       context: ./frontend
       args:
         - API_URL=${FRONTEND_API_URL:-http://api:8000}
-    ports: ["3000:3000"]              # NPM이 프록시할 포트
+    ports: ["8133:3000"]              # NPM이 프록시할 포트 (host 8133 → NPM upstream 갱신 필요)
     restart: unless-stopped
     depends_on:
       - api
