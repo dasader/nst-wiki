@@ -27,6 +27,8 @@ curl http://localhost:8033/health
 | qdrant | - | 벡터 검색 (Phase 4부터 사용) |
 | redis | - | Celery 큐 (Phase 2부터 사용) |
 
+> 포트 배분 규칙(NN=33): [dasader/code · PORTS.md](https://github.com/dasader/code/blob/main/PORTS.md)
+
 볼륨: `wiki-data`(위키 git 저장소), `sources-data`(원본 문서), `pg-data`, `qdrant-data`
 
 DB 스키마는 `db/init/NNN_*.sql` 넘버링 파일로만 변경한다 (LLM DDL 금지 — 설계서 원칙 5).

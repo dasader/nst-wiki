@@ -6,6 +6,8 @@
 
 설계서: `docs/superpowers/specs/2026-07-04-kistep-llm-wiki-design.md`
 
+> 포트 배분 규칙·레지스트리: https://github.com/dasader/code/blob/main/PORTS.md (이 서비스 NN=33). 신규 포트 배정 시 준수.
+
 ## 작업 워크플로
 
 - **main 직접 커밋 금지.** 브랜치 → PR → 머지. PR은 squash merge.
