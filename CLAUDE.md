@@ -16,7 +16,7 @@
 ```
 api/
   app/            FastAPI 라우터: main, ingest_api, query_api, read_api
-  app/static/     dashboard.html — 관리자 승인 대시보드 (api 오리진 :8000이 직접 서빙)
+  app/static/     dashboard.html — 관리자 승인 대시보드 (api가 직접 서빙, host :8033)
   pipeline/       인제스트: parse → classify → map_tables/events → narrative → compile
   llm.py          Gemini 호출 단일 창구 (용도별 설정은 llm_config.json)
   embeddings.py   BGE-M3 임베딩 + Qdrant 색인
