@@ -18,7 +18,6 @@
 ```
 api/
   app/            FastAPI 라우터: main, ingest_api, query_api, read_api
-  app/static/     dashboard.html — 관리자 승인 대시보드 (api가 직접 서빙, host :8033)
   pipeline/       인제스트: parse → classify → map_tables/events → narrative → compile
   llm.py          Gemini 호출 단일 창구 (용도별 설정은 llm_config.json)
   embeddings.py   BGE-M3 임베딩 + Qdrant 색인
@@ -28,6 +27,7 @@ api/
   scripts/init_wiki.py   위키 git 저장소 최초 초기화 (멱등)
   tasks.py        Celery 태스크 (run_ingest, embed_pages, ...)
 frontend/app/     Next.js: 질문하기(/), 위키(/wiki), 데이터(/data)
+  admin/          승인 콘솔 — admin-key 게이트(layout) + 승인 대기·문서 업로드·위키 편집
 db/init/          스키마 — NNN_*.sql 넘버링 파일
 ```
 
@@ -64,7 +64,7 @@ docker run --rm --network nst-wiki_default -v "$PWD/api:/app" -w /app \
 
 주의: 인증 테스트는 `ADMIN_API_KEY`를 `setdefault("testkey")`로 잡고 `testkey`
 헤더를 보낸다 — 실행 시 `ADMIN_API_KEY` env를 주입하면 `setdefault`가 무시돼 401이 난다.
-프런트 검증 테스트는 `node --test api/app/static/upload-validate.test.mjs`.
+프런트 검증 테스트는 `node frontend/app/admin/upload/validate.test.mjs`.
 
 ## 이 호스트 주의
 

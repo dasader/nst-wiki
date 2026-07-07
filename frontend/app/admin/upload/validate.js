@@ -1,0 +1,12 @@
+// 업로드 파일 판정 규칙 단일 소스. upload/page.js(클라)와 validate.test.mjs가 공유한다.
+// 서버 ALLOWED_EXTS와 동일하게 유지할 것.
+export const ALLOWED_EXTS = [".pdf", ".md", ".xlsx"];
+export const MAX_MB = 50; // ponytail: 개인용 기본값, 서버가 거부하면 상향
+
+export function validateFile(file, maxMB = MAX_MB) {
+  const ext = (file.name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+  if (!ALLOWED_EXTS.includes(ext)) return `지원하지 않는 형식: ${ext || "(없음)"}`;
+  if (file.size > maxMB * 1024 * 1024)
+    return `용량 초과: ${(file.size / 1048576).toFixed(1)}MB > ${maxMB}MB`;
+  return null;
+}
