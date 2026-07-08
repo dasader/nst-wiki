@@ -1,14 +1,5 @@
 {
   "default": {"model": "gemini-3.1-flash-lite", "thinking_level": "high"},
-  "classify": {},
   "parse_markdown": {"thinking_level": "low", "timeout_ms": 180000},
-  "parse_tables": {"thinking_level": "low", "timeout_ms": 180000},
-  "map_table": {},
-  "extract_events": {},
-  "plan_pages": {},
-  "merge_page": {},
-  "summarize_source": {},
-  "text2sql": {},
-  "route_query": {},
-  "synthesize": {}
+  "parse_tables": {"thinking_level": "low", "timeout_ms": 180000}
 }

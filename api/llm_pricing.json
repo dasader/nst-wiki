@@ -1,4 +1,0 @@
-{
-  "_note": "USD / 1M 토큰, 표준(standard) 티어. 출력 단가에는 thinking 토큰이 포함된다. 출처: https://ai.google.dev/gemini-api/docs/pricing (2026-07-08 확인). 모델을 바꾸면 여기에 단가를 추가할 것 — 미등록 모델은 비용이 0이 아니라 '단가 미등록'으로 표시된다.",
-  "gemini-3.1-flash-lite": {"input": 0.25, "cached_input": 0.025, "output": 1.50}
-}
