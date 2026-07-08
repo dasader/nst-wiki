@@ -27,6 +27,18 @@ def test_stage_changes_creates_branch_and_returns_to_main(tmp_path):
     assert "tech/hbm.md" not in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
 
 
+def test_stage_changes_initializes_missing_repo(tmp_path):
+    """신규 배포(위키 볼륨이 빔): init_wiki를 수동 실행하지 않아도 첫 인제스트가 성공해야 한다.
+    회귀: git checkout -f main → exit 128로 태스크가 failed 되던 문제."""
+    root = tmp_path / "wiki"
+    root.mkdir()  # 볼륨 마운트로 디렉토리만 존재, .git 없음
+    branch = wiki_ops.stage_changes(root, "s1", {"tech/a.md": "# A"}, "ingest: 첫 문서")
+    assert branch == "ingest/s1"
+    assert (root / ".git").is_dir()
+    assert "tech/a.md" in _git_out(root, "ls-tree", "-r", "--name-only", "ingest/s1")
+    assert _git_out(root, "branch", "--show-current").strip() == "main"
+
+
 def test_stage_changes_is_rerunnable(tmp_path):
     init_wiki(tmp_path)
     wiki_ops.stage_changes(tmp_path, "s1", {"tech/a.md": "v1"}, "m1")

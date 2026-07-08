@@ -13,12 +13,26 @@ def _git(root: Path, *args: str) -> str:
     ).stdout
 
 
+def _ensure_repo(root: Path) -> None:
+    """위키 git 저장소가 없으면 초기화한다 (멱등). 항상 _lock 안에서만 호출할 것.
+
+    신규 배포는 위키 볼륨이 비어 있다 — 초기화가 수동 단계뿐이면 첫 인제스트가
+    `git checkout -f main`에서 exit 128로 죽는다. 여기서 자동 보장한다.
+    """
+    if (root / ".git").exists():
+        return
+    from scripts.init_wiki import init_wiki  # 지연 임포트: init_wiki가 wiki_ops를 import (순환 회피)
+
+    init_wiki(root)
+
+
 @contextmanager
 def _lock(root: Path):
     # ponytail: 프로세스 간 직렬화는 flock 하나로 충분 (단일 호스트 worker 전제), 분산 워커 도입 시 재검토
     # 잠금 파일은 저장소 밖 사이드카 — 작업 트리 안에 두면 git add -A에 커밋된다
     with open(root.parent / f"{root.name}.ingest.lock", "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
+        _ensure_repo(root)  # 잠금 안에서 초기화 — api·worker 동시 기동 시 중복 git init 방지
         yield
 
 
