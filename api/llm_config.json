@@ -4,6 +4,7 @@
   "parse_markdown": {"thinking_level": "low", "timeout_ms": 180000},
   "parse_tables": {"thinking_level": "low", "timeout_ms": 180000},
   "map_table": {},
+  "extract_events": {},
   "plan_pages": {},
   "merge_page": {},
   "summarize_source": {},

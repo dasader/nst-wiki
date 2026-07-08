@@ -70,34 +70,67 @@ def canon_field(s: str) -> str:
     return _SYN_LOOKUP.get(norm.casefold(), s)  # 세부주제 별칭, 없으면 원문 그대로
 
 
-MAP_SCHEMA = {
+_MAP_ITEM = {
+    "table": {"type": "string", "enum": list(CORE_TABLES) + ["none"]},
+    "confidence": {"type": "number"},
+    "column_mapping": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {"src": {"type": "string"}, "dst": {"type": "string"}},
+            "required": ["src", "dst"],
+        },
+    },
+}
+
+BATCH_SCHEMA = {
     "type": "object",
     "properties": {
-        "table": {"type": "string", "enum": list(CORE_TABLES) + ["none"]},
-        "confidence": {"type": "number"},
-        "column_mapping": {
+        "mappings": {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": {"src": {"type": "string"}, "dst": {"type": "string"}},
-                "required": ["src", "dst"],
+                "properties": {"index": {"type": "integer"}, **_MAP_ITEM},
+                "required": ["index", *_MAP_ITEM],
             },
-        },
+        }
     },
-    "required": ["table", "confidence", "column_mapping"],
+    "required": ["mappings"],
 }
 
-PROMPT = """한국 정책문서에서 추출한 표를 DB 스키마에 매핑하라.
+# ponytail: 표 8개를 한 프롬프트에 — 24개 표 문서 기준 LLM 호출 24→3회.
+# 프롬프트가 커져 매핑 품질이 떨어지면 줄이고, 토큰 기반 분할이 필요해지면 그때 도입.
+BATCH_SIZE = 8
+
+PROMPT = """한국 정책문서에서 추출한 표들을 DB 스키마에 매핑하라.
 
 대상 테이블과 컬럼:
 {schema_desc}
 
-표 제목: {title}
-표 컬럼: {columns}
-샘플 행 (최대 5개): {sample}
+표 목록:
+{tables}
 
-이 표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 [{{"src": "표 컬럼명", "dst": "DB 컬럼명"}}, ...] 목록을,
+각 표마다 mappings에 항목을 하나씩 반환하라. index는 위 표 번호를 그대로 쓴다.
+표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 [{{"src": "표 컬럼명", "dst": "DB 컬럼명"}}, ...] 목록을,
 대응하지 않으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
+
+
+def _render(payloads: list[dict]) -> str:
+    return "\n\n".join(
+        f"[{i}] 제목: {p.get('table_title', '')}\n"
+        f"    컬럼: {p['columns']}\n"
+        f"    샘플 행 (최대 5개): {p['rows'][:5]}"
+        for i, p in enumerate(payloads)
+    )
+
+
+def _map_batch(payloads: list[dict], schema_desc: str) -> dict[int, dict]:
+    """표 묶음을 LLM 호출 1회로 매핑. index로 표와 정렬한다(누락·재정렬 방어)."""
+    out = llm.generate("map_table", PROMPT.format(
+        schema_desc=schema_desc, tables=_render(payloads),
+    ), schema=BATCH_SCHEMA)
+    return {m["index"]: m for m in out.get("mappings", [])
+            if isinstance(m, dict) and isinstance(m.get("index"), int)}
 
 
 # 연도 토큰: 4자리(2024) 또는 2자리 약식('24). 4자리 우선 매칭.
@@ -134,64 +167,75 @@ def _coerce(col: str, val):
     return canon_field(s) if col == "field" else s
 
 
+def _stash_for_review(payload: dict, suggestion: dict, confidence: float,
+                      source_id: str, result: dict) -> None:
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO staging_tables (source_id, table_title, raw_data, "
+            "suggested_mapping, mapping_confidence) VALUES (%s, %s, %s, %s, %s)",
+            (source_id, payload.get("table_title", ""),
+             json.dumps(payload, ensure_ascii=False),
+             json.dumps(suggestion, ensure_ascii=False), confidence),
+        )
+    result["needs_review"] += 1
+
+
+def _stage_one(payload: dict, out: dict, source_id: str, result: dict) -> None:
+    """매핑 결과 하나를 staging에 적재하거나, 확신도가 낮으면 검토 대기로 넘긴다."""
+    table = out["table"]
+    raw_mapping = {m["src"]: m["dst"] for m in out.get("column_mapping", [])
+                   if isinstance(m, dict) and "src" in m and "dst" in m}
+    mapping = {s: d for s, d in raw_mapping.items()
+               if table in CORE_TABLES and d in CORE_TABLES.get(table, [])
+               and s in payload["columns"]}
+    if not (table in CORE_TABLES and out["confidence"] >= CONFIDENCE_THRESHOLD and mapping):
+        _stash_for_review(payload, out, out["confidence"], source_id, result)
+        return
+    col_idx = {c: i for i, c in enumerate(payload["columns"])}
+    dst_cols = list(mapping.values()) + ["source_id"]
+    n = 0
+    with db.connect() as conn:
+        for row in payload["rows"]:
+            values = [
+                _coerce(dst, row[col_idx[src]]) if col_idx[src] < len(row) else None
+                for src, dst in mapping.items()
+            ]
+            if all(v is None for v in values):
+                continue
+            conn.execute(
+                f"INSERT INTO staging.{table} ({', '.join(dst_cols)}) "
+                f"VALUES ({', '.join(['%s'] * len(dst_cols))})",
+                values + [source_id],
+            )
+            n += 1
+    result["staged"].append({"table": table, "rows": n})
+
+
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
     tables_dir = parsed_dir / "tables"
-    result = {"staged": [], "needs_review": 0}
+    result: dict = {"staged": [], "needs_review": 0}
     if not tables_dir.is_dir():
         return result
     schema_desc = "\n".join(f"- {t}: {', '.join(cols)}" for t, cols in CORE_TABLES.items())
-    for tf in sorted(tables_dir.glob("table_*.json")):
-        payload = json.loads(tf.read_text(encoding="utf-8"))
-        try:
-            out = llm.generate("map_table", PROMPT.format(
-                schema_desc=schema_desc,
-                title=payload.get("table_title", ""),
-                columns=payload["columns"],
-                sample=payload["rows"][:5],
-            ), schema=MAP_SCHEMA)
-            table = out["table"]
-            raw_mapping = {m["src"]: m["dst"] for m in out.get("column_mapping", [])
-                           if isinstance(m, dict) and "src" in m and "dst" in m}
-            mapping = {s: d for s, d in raw_mapping.items()
-                       if table in CORE_TABLES and d in CORE_TABLES.get(table, [])
-                       and s in payload["columns"]}
-            if table in CORE_TABLES and out["confidence"] >= CONFIDENCE_THRESHOLD and mapping:
-                col_idx = {c: i for i, c in enumerate(payload["columns"])}
-                dst_cols = list(mapping.values()) + ["source_id"]
-                n = 0
-                with db.connect() as conn:
-                    for row in payload["rows"]:
-                        values = [
-                            _coerce(dst, row[col_idx[src]]) if col_idx[src] < len(row) else None
-                            for src, dst in mapping.items()
-                        ]
-                        if all(v is None for v in values):
-                            continue
-                        conn.execute(
-                            f"INSERT INTO staging.{table} ({', '.join(dst_cols)}) "
-                            f"VALUES ({', '.join(['%s'] * len(dst_cols))})",
-                            values + [source_id],
-                        )
-                        n += 1
-                result["staged"].append({"table": table, "rows": n})
-            else:
-                with db.connect() as conn:
-                    conn.execute(
-                        "INSERT INTO staging_tables (source_id, table_title, raw_data, "
-                        "suggested_mapping, mapping_confidence) VALUES (%s, %s, %s, %s, %s)",
-                        (source_id, payload.get("table_title", ""),
-                         json.dumps(payload, ensure_ascii=False),
-                         json.dumps(out, ensure_ascii=False), out["confidence"]),
-                    )
-                result["needs_review"] += 1
+    payloads = [json.loads(tf.read_text(encoding="utf-8"))
+                for tf in sorted(tables_dir.glob("table_*.json"))]
+
+    for start in range(0, len(payloads), BATCH_SIZE):
+        batch = payloads[start:start + BATCH_SIZE]
+        try:  # 배치 호출 실패는 그 묶음의 표만 검토 대기로 — 인제스트는 계속된다
+            outs = _map_batch(batch, schema_desc)
+            batch_err = None
         except Exception as e:
-            with db.connect() as conn:
-                conn.execute(
-                    "INSERT INTO staging_tables (source_id, table_title, raw_data, "
-                    "suggested_mapping, mapping_confidence) VALUES (%s, %s, %s, %s, %s)",
-                    (source_id, payload.get("table_title", ""),
-                     json.dumps(payload, ensure_ascii=False),
-                     json.dumps({"error": str(e)}, ensure_ascii=False), 0.0),
-                )
-            result["needs_review"] += 1
+            outs, batch_err = {}, str(e)
+        for i, payload in enumerate(batch):
+            out = outs.get(i)
+            if out is None:  # 배치가 실패했거나 LLM이 이 표를 빠뜨림
+                _stash_for_review(
+                    payload, {"error": batch_err or "LLM 응답에 이 표의 매핑이 없음"},
+                    0.0, source_id, result)
+                continue
+            try:  # 표 하나의 적재 실패가 나머지를 막지 않게
+                _stage_one(payload, out, source_id, result)
+            except Exception as e:
+                _stash_for_review(payload, {"error": str(e)}, 0.0, source_id, result)
     return result
