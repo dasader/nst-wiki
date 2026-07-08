@@ -18,6 +18,13 @@ curl http://localhost:8033/health
 
 위키 git 저장소(`/data/wiki`)는 첫 위키 쓰기 때 자동 초기화된다 (멱등).
 
+`db/init/NNN_*.sql`은 **빈 DB에서만** 자동 실행된다. 이미 운영 중인 DB에는 새로 추가된
+번호의 SQL을 한 번 직접 적용할 것:
+
+```bash
+docker exec -i <postgres컨테이너> psql -U wiki -d llm_wiki -v ON_ERROR_STOP=1 < db/init/007_llm_usage.sql
+```
+
 ## 구성
 
 | 서비스 | 포트 | 역할 |

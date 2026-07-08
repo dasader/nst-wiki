@@ -9,6 +9,7 @@ const WIPED = [
   ["인제스트 태스크", "업로드 이력과 승인 대기 큐 전체"],
   ["업로드 원본", "서버에 보관된 원본 PDF·XLSX·MD 파일"],
   ["벡터 색인", "Qdrant의 위키 임베딩"],
+  ["LLM 비용 기록", "지금까지 누적된 토큰 사용량·지출 이력"],
 ];
 
 export default function ResetPage() {
