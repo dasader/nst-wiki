@@ -44,10 +44,9 @@ export const WIKI_DIRS = {
   events: { label: "정책변화 이력", hint: "시점별 정책 변화" },
   synthesis: { label: "종합·비교 분석", hint: "교차 분석 페이지" },
   summaries: { label: "소스 요약", hint: "원본 문서 요약" },
-  contradictions: { label: "모순 기록", hint: "충돌·검토 로그" },
 };
 
-// 테이블별 실존 컬럼 (api/app/read_api.py DATA_TABLES 미러). 데이터 링크 유효성 검사에 쓴다.
+// 테이블별 실존 컬럼 (api/data_schema.py DATA_TABLES 미러). 데이터 링크 유효성 검사에 쓴다.
 export const COLUMNS = {
   technologies: ["id", "name", "field", "sub_field", "lead_ministry", "trl_level",
                  "description", "source_id", "created_at", "updated_at"],

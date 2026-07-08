@@ -1,8 +1,8 @@
 import logging
 import os
+import urllib.request
 from contextlib import asynccontextmanager
 
-import httpx
 import psycopg
 import redis
 from fastapi import FastAPI
@@ -41,7 +41,8 @@ def _check(fn) -> str:
 def health():
     checks = {
         "postgres": _check(lambda: psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3).close()),
-        "qdrant": _check(lambda: httpx.get(os.environ["QDRANT_URL"] + "/readyz", timeout=3).raise_for_status()),
+        # urlopen은 비-2xx에 HTTPError를 던진다 — 별도 상태코드 확인이 필요 없다
+        "qdrant": _check(lambda: urllib.request.urlopen(os.environ["QDRANT_URL"] + "/readyz", timeout=3).close()),
         "redis": _check(lambda: redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=3).ping()),
     }
     ok = all(v == "ok" for v in checks.values())

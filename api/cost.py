@@ -1,16 +1,14 @@
-"""토큰 사용량 → USD 환산. 단가는 llm_pricing.json (조회 시점에 적용 — 과거 기록도 자동 정정)."""
-import json
-from functools import lru_cache
-from pathlib import Path
+"""토큰 사용량 → USD 환산. 단가는 조회 시점에 적용한다 — 과거 기록도 자동 정정된다.
 
-PRICING_PATH = Path(__file__).parent / "llm_pricing.json"
+USD / 1M 토큰, 표준(standard) 티어. 출력 단가에는 thinking 토큰이 포함된다.
+출처: https://ai.google.dev/gemini-api/docs/pricing (2026-07-08 확인).
+모델을 바꾸면 여기에 단가를 추가할 것 — 미등록 모델은 비용이 0이 아니라 '단가 미등록'으로 표시된다.
+"""
+
+PRICING = {
+    "gemini-3.1-flash-lite": {"input": 0.25, "cached_input": 0.025, "output": 1.50},
+}
 _M = 1_000_000
-
-
-@lru_cache
-def pricing() -> dict:
-    raw = json.loads(PRICING_PATH.read_text(encoding="utf-8"))
-    return {k: v for k, v in raw.items() if not k.startswith("_")}
 
 
 def cost_usd(model: str, prompt_tokens: int, cached_tokens: int,
@@ -20,7 +18,7 @@ def cost_usd(model: str, prompt_tokens: int, cached_tokens: int,
     - 입력은 prompt_tokens 전체에서 cached_tokens를 뺀 만큼만 정가, 캐시분은 할인가.
     - 사고(thinking) 토큰은 출력 단가로 과금된다 (Gemini 공식 단가표 명시).
     """
-    p = pricing().get(model)
+    p = PRICING.get(model)
     if p is None:
         return None
     uncached = max(prompt_tokens - cached_tokens, 0)
@@ -37,4 +35,4 @@ def priced(row: dict) -> dict:
 
 
 def unpriced_models(rows: list[dict]) -> list[str]:
-    return sorted({r["model"] for r in rows if r["model"] not in pricing()})
+    return sorted({r["model"] for r in rows if r["model"] not in PRICING})
