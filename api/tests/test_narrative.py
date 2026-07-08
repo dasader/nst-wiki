@@ -112,3 +112,31 @@ def test_compile_narrative_prunes_dead_links(tmp_path, monkeypatch):
     assert "laws/국가전략기술육성법" in md
     assert "[[tech/없는페이지]]" not in md                 # 없는 페이지 → 평문화
     assert "tech/없는페이지" in md
+
+
+def test_summary_excerpt_cuts_on_line_boundary_and_marks_truncation(tmp_path, monkeypatch):
+    """요약 페이지는 문장 중간에서 끊기지 않고, 잘렸으면 그 사실을 명시한다 (no silent caps)."""
+    init_wiki(tmp_path)
+    lines = [f"line{i:02d}" + "x" * 100 for i in range(40)]   # 각 줄 106자, 총 >2000자
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[], merged={"content": "", "contradictions": []},
+    ))
+    out = narrative.compile_narrative(tmp_path, "src5", {"title": "문서"}, ["\n".join(lines)])
+    page = out["files"]["summaries/src5.md"]
+
+    assert "발췌" in page                                  # 잘렸음을 표시
+    body = page.split("- ingest:", 1)[1].split("\n", 1)[1].strip()
+    excerpt = body.split("\n\n_(", 1)[0]
+    for ln in excerpt.splitlines():
+        assert len(ln) == 106, f"줄이 중간에서 잘림: {ln[-20:]!r}"
+
+
+def test_summary_short_narrative_is_not_marked(tmp_path, monkeypatch):
+    """짧은 서사는 그대로 싣고 발췌 표시를 붙이지 않는다."""
+    init_wiki(tmp_path)
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[], merged={"content": "", "contradictions": []},
+    ))
+    out = narrative.compile_narrative(tmp_path, "src6", {"title": "문서"}, ["짧은 서사입니다."])
+    page = out["files"]["summaries/src6.md"]
+    assert "짧은 서사입니다." in page and "발췌" not in page
