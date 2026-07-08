@@ -2,7 +2,9 @@
 -- (단가가 바뀌거나 잘못 넣어도 과거 기록이 자동 정정된다).
 -- output_tokens(candidates)와 thought_tokens는 분리 저장 — 과금은 둘의 합이지만
 -- thinking_level=high에서 사고 토큰이 얼마나 먹는지 보여야 한다.
-CREATE TABLE llm_usage (
+-- 002~006과 같은 관례: 버전 추적 테이블이 없으므로 몇 번 실행해도 안전해야 한다
+-- (빈 DB는 docker-entrypoint-initdb.d가 자동 실행, 기존 DB는 psql로 직접 적용).
+CREATE TABLE IF NOT EXISTS llm_usage (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     purpose VARCHAR(40) NOT NULL,
@@ -15,7 +17,7 @@ CREATE TABLE llm_usage (
     latency_ms INTEGER
 );
 
-CREATE INDEX llm_usage_created_idx ON llm_usage (created_at DESC);
-CREATE INDEX llm_usage_source_idx ON llm_usage (source_id);
+CREATE INDEX IF NOT EXISTS llm_usage_created_idx ON llm_usage (created_at DESC);
+CREATE INDEX IF NOT EXISTS llm_usage_source_idx ON llm_usage (source_id);
 
 -- wiki_ro(Text-to-SQL 롤)에는 일부러 GRANT하지 않는다 — 004의 화이트리스트는 사용자 데이터 테이블 전용.
