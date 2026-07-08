@@ -158,3 +158,28 @@ def test_excerpt_cuts_on_line_boundary_and_marks_truncation():
 
 def test_excerpt_leaves_short_text_untouched():
     assert narrative._excerpt("짧은 서사입니다.") == "짧은 서사입니다."
+
+
+def test_compile_narrative_unwraps_dead_data_refs_keeping_value(tmp_path, monkeypatch):
+    """없는 테이블의 [[data:...]] 참조는 조건의 '값'을 평문으로 남긴다.
+
+    LLM은 숫자를 참조 안에 넣어 산문에 인라인으로 쓴다 — 통째로 지우면 문장이 깨진다.
+    실존 테이블 참조는 링크 그대로 보존한다.
+    """
+    init_wiki(tmp_path)
+    content = ("주요국은 [[data:전략기술?범위=10~20]]개 내외를 선정했고, "
+               "우리는 [[data:전략기술?분야수=12]]대 기술을 골랐다. "
+               "값 없는 참조 [[data:전략기술]]는 지운다. "
+               "예산은 [[data:budget_history?fiscal_year=2024]] 참조.")
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[{"path": "tech/a.md", "action": "create", "title": "A"}],
+        merged={"content": content, "contradictions": []},
+    ))
+    md = narrative.compile_narrative(
+        tmp_path, "src7", {"title": "문서"}, ["서사"])["files"]["tech/a.md"]
+
+    assert "주요국은 10~20개 내외를 선정했고" in md      # 숫자 보존, 공백 정상
+    assert "우리는 12대 기술을 골랐다" in md
+    assert "값 없는 참조는 지운다" in md                 # 값 없으면 앞 공백까지 제거
+    assert "전략기술?" not in md and "[[data:전략기술" not in md
+    assert "[[data:budget_history?fiscal_year=2024]]" in md   # 실존 테이블 → 링크 유지

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import llm
 import wiki_ops
+from data_schema import DATA_TABLES
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +81,10 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 (laws/·policy/ 같은 임의 디렉토리를 만들지 말 것):
 {link_targets}
 
+[[data:테이블?컬럼=값]] 참조는 아래 테이블·컬럼으로만 만들 수 있다. 없으면 참조하지 말고
+숫자를 본문에 그대로 써라 (전략기술 같은 임의 테이블명을 만들지 말 것):
+{data_targets}
+
 페이지 경로: {path} (title: {title})
 기존 내용 (신규 페이지면 빈 값):
 {current}
@@ -134,13 +139,25 @@ def _excerpt(text: str, limit: int = SUMMARY_CHARS) -> str:
 
 
 LINK_RE = re.compile(r"\[\[([^\]:]+)\]\]")  # [[data:...]]는 콜론이 있어 매칭되지 않는다
+# 앞 공백을 함께 잡는다 — 값 없이 제거할 때 이중 공백이 남지 않도록
+DATA_LINK_RE = re.compile(r"([ \t]*)\[\[data:([^\]?]+)(?:\?([^\]]*))?\]\]")
+_COND_RE = re.compile(r"^\s*[\w가-힣]+\s*[=:]\s*(.+?)\s*$")  # "컬럼=값" — frontend links.js와 동일 규약
+
+DATA_TARGETS = "\n".join(f"- {t}: {', '.join(cols)}" for t, cols in DATA_TABLES.items())
 
 
 def _prune_dead_links(files: dict[str, str], existing: list[str]) -> None:
-    """실존하지 않는 페이지를 가리키는 [[링크]]를 평문으로 낮춘다 (in-place).
+    """실존하지 않는 대상을 가리키는 링크를 정리한다 (in-place).
 
-    프롬프트로 대상 목록을 줘도 LLM은 laws/·policy/ 같은 없는 디렉토리나 미생성 페이지로
-    링크를 만든다. schema.md 규칙: "대상 페이지가 없으면 링크를 생략한다".
+    프롬프트로 대상 목록을 줘도 LLM은 laws/·policy/ 같은 없는 디렉토리, 미생성 페이지,
+    그리고 [[data:전략기술?분야수=12]]처럼 없는 테이블까지 창작한다.
+    schema.md 규칙: "대상 페이지가 없으면 링크를 생략한다".
+
+    - 없는 페이지 링크 → 경로를 평문으로 남긴다 (문장 뜻이 유지된다)
+    - 없는 테이블의 data 참조 → 조건의 **값**을 평문으로 남긴다. LLM은 숫자를 참조 안에 넣어
+      산문에 인라인으로 쓴다("주요국은 [[data:전략기술?범위=10~20]]개 내외") — 통째로 지우면
+      "주요국은개 내외"가 된다. 값이 없으면 앞 공백까지 함께 제거한다.
+    - 실존 테이블 + 없는 컬럼은 남긴다 — 프런트가 테이블만 링크하고 경고로 표시한다
     """
     valid = {p if p.endswith(".md") else f"{p}.md" for p in (*existing, *files)}
 
@@ -149,8 +166,16 @@ def _prune_dead_links(files: dict[str, str], existing: list[str]) -> None:
         norm = target if target.endswith(".md") else f"{target}.md"
         return m.group(0) if norm in valid else target
 
+    def keep_or_unwrap_data(m: re.Match) -> str:
+        ws, table, cond = m.group(1), m.group(2).strip(), m.group(3) or ""
+        if table in DATA_TABLES:
+            return m.group(0)
+        value = _COND_RE.match(cond)
+        return f"{ws}{value.group(1)}" if value else ""
+
     for path in files:
-        files[path] = LINK_RE.sub(keep_or_flatten, files[path])
+        md = LINK_RE.sub(keep_or_flatten, files[path])
+        files[path] = DATA_LINK_RE.sub(keep_or_unwrap_data, md)
 
 
 def _strip_uc(fm: str) -> str:
@@ -206,7 +231,7 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
         merged = llm.generate("merge_page", MERGE_PROMPT.format(
             source_id=source_id, today=today, path=page["path"], title=page["title"],
             current=current, doc_title=meta.get("title", ""), narrative=narrative,
-            link_targets=link_targets,
+            link_targets=link_targets, data_targets=DATA_TARGETS,
         ), schema=MERGE_SCHEMA)
         content = merged["content"]
         if merged["contradictions"]:

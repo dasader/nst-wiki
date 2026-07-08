@@ -18,17 +18,7 @@ router = APIRouter(prefix="/api/v1")
 # 새 페이지 허용 경로: PAGE_DIRS/ + 파일명(영문·한글·숫자·.-_). narrative.PATH_RE와 동일 규칙 + summaries
 _NEW_PAGE_RE = re.compile(r"^(tech|entity|events|synthesis|summaries)/[\w가-힣.-]+\.md$")
 
-DATA_TABLES = {
-    "technologies": ["id", "name", "field", "sub_field", "lead_ministry", "trl_level",
-                     "description", "source_id", "created_at", "updated_at"],
-    "projects": ["id", "project_code", "name", "lead_ministry", "budget_total",
-                 "budget_annual", "start_year", "end_year", "status", "source_id"],
-    "policy_events": ["id", "event_date", "event_type", "title", "description",
-                      "affected_fields", "source_id"],
-    "ministries": ["id", "name", "abbreviation", "source_id"],
-    "budget_history": ["id", "project_id", "fiscal_year", "amount", "source_id"],
-    "tech_project_mapping": ["technology_id", "project_id", "relevance_score", "mapping_source"],
-}
+from data_schema import DATA_TABLES  # noqa: E402  (조회 API와 위키 링크 검증의 단일 출처)
 
 
 def _root() -> Path:
