@@ -1,4 +1,5 @@
 """서사 경로: 페이지 계획(LLM) → 페이지별 병합(LLM) → 모순 기록. 산출물은 파일 dict."""
+import logging
 import re
 from datetime import date
 from pathlib import Path
@@ -6,7 +7,10 @@ from pathlib import Path
 import llm
 import wiki_ops
 
+log = logging.getLogger(__name__)
+
 MAX_PAGES = 15
+SUMMARY_CHARS = 2000
 
 PATH_RE = re.compile(r"^(tech|entity|events|synthesis)/[\w가-힣.-]+\.md$")
 
@@ -84,6 +88,23 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 {narrative}
 
 이 페이지에 관련된 내용만 반영하고, content에 페이지 전문을 반환하라."""
+
+
+def _excerpt(text: str, limit: int = SUMMARY_CHARS) -> str:
+    """소스 요약 페이지에 실을 발췌. 줄 경계에서 자르고, 잘렸으면 그 사실을 명시한다.
+
+    문장 한가운데서 끊으면 "쓰다 만 문서"로 읽힌다. 잘라낸 사실도 조용히 숨기지 않는다
+    (no silent caps).
+    ponytail: 원문 앞부분을 그대로 싣는 발췌 — 진짜 요약이 필요하면 llm.generate("synthesize")로 승격.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text.rfind("\n", 0, limit)
+    if cut <= 0:
+        cut = limit  # 줄바꿈 없는 한 덩어리면 어쩔 수 없이 하드 절단
+    log.warning("요약 발췌: 전체 %d자 중 %d자만 페이지에 실음", len(text), cut)
+    return (f"{text[:cut].rstrip()}\n\n"
+            f"_(발췌 — 전체 {len(text):,}자 중 앞부분만 실었습니다. 전체 내용은 원본 문서를 참조하세요)_")
 
 
 LINK_RE = re.compile(r"\[\[([^\]:]+)\]\]")  # [[data:...]]는 콜론이 있어 매칭되지 않는다
@@ -171,7 +192,7 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
 
     files[f"summaries/{source_id}.md"] = (
         f"# {meta.get('title', source_id)}\n\n- source_id: {source_id}\n"
-        f"- ingest: {today}\n\n{narrative[:2000]}\n"
+        f"- ingest: {today}\n\n{_excerpt(narrative)}\n"
     )
     if contradictions:
         log = wiki_ops.read_page(wiki_root, "contradictions/log.md") or ""
