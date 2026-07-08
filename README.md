@@ -13,9 +13,10 @@
 ```bash
 cp .env.example .env          # POSTGRES_PASSWORD 수정
 docker compose up -d --build
-docker compose exec api python scripts/init_wiki.py   # 최초 1회
 curl http://localhost:8033/health
 ```
+
+위키 git 저장소(`/data/wiki`)는 첫 위키 쓰기 때 자동 초기화된다 (멱등).
 
 ## 구성
 
