@@ -114,6 +114,25 @@ def test_approve_branch_idempotent_when_branch_missing(tmp_path):
     wiki_ops.approve_branch(tmp_path, "sX", "approve: 없음")  # 브랜치 없음 — 예외 없이 리턴
 
 
+def test_approve_stale_branch_after_main_advanced(tmp_path):
+    """다른 문서가 먼저 승인돼 main이 앞서 나간 뒤, 오래 staged로 있던 브랜치를 승인해도
+    파생 파일(index.md) 충돌로 실패하지 않고 페이지가 main에 반영돼야 한다."""
+    init_wiki(tmp_path)
+    # B: 이른 시점(빈 main)에서 브랜치 생성 — 이후 승인되지 않고 방치
+    wiki_ops.stage_changes(tmp_path, "sB", {"tech/b.md": "# B", "summaries/sB.md": "# 요약B"}, "ingest: B")
+    # A: 나중에 staged→승인 → main 전진 (index.md 재생성 포함)
+    wiki_ops.stage_changes(tmp_path, "sA", {"tech/a.md": "# A"}, "ingest: A")
+    wiki_ops.approve_branch(tmp_path, "sA", "approve: A")
+    # 이제 sB는 낡은 base(빈 main)에 갇힘 — 승인이 예외 없이 성공해야 한다
+    wiki_ops.approve_branch(tmp_path, "sB", "approve: B")
+    assert (tmp_path / "tech" / "b.md").read_text(encoding="utf-8") == "# B"
+    assert (tmp_path / "tech" / "a.md").read_text(encoding="utf-8") == "# A"  # A 기여분 보존
+    idx = (tmp_path / "index.md").read_text(encoding="utf-8")
+    assert "tech/b" in idx and "tech/a" in idx  # 파생 색인 재구성
+    assert "<<<<<<<" not in idx  # 충돌 마커 잔존 금지
+    assert "ingest/sB" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
+
+
 def test_read_page_asof(tmp_path):
     init_wiki(tmp_path)
     rel = "tech/asof.md"

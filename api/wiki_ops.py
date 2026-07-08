@@ -144,7 +144,19 @@ def approve_branch(root: Path, source_id: str, message: str,
             return  # 이미 병합·삭제된 브랜치 — 재시도 멱등
         _git(root, "checkout", "-f", "main")
         _git(root, "clean", "-fd")
-        _git(root, "merge", "--squash", branch)
+        # 3-way 병합으로 공유 페이지 내용은 합치되, 파생 파일 index.md는 병합 대상에서 제외한다.
+        # index.md는 PAGE_DIRS에서 재생성되는 파일이라 브랜치가 오래되면 항상 충돌한다 —
+        # check=False로 진행시키고 아래서 재생성으로 확정 해소한다.
+        subprocess.run(["git", "-C", str(root), "merge", "--squash", branch],
+                       capture_output=True, text=True)
+        (root / "index.md").write_text(rebuild_index(root), encoding="utf-8")
+        _git(root, "add", "--", "index.md")
+        # index.md를 제외하고 남은 미해결 충돌 = 진짜 페이지 충돌 → 사람이 해결해야 한다.
+        unmerged = _git(root, "diff", "--name-only", "--diff-filter=U").split()
+        if unmerged:
+            _git(root, "checkout", "-f", "main")  # squash 병합은 MERGE_HEAD가 없어 abort 불가 — 트리 되돌림
+            _git(root, "clean", "-fd")
+            raise RuntimeError(f"위키 병합 충돌(수동 해결 필요): {unmerged}")
         if resolutions:
             log_path = root / "contradictions" / "log.md"
             log = log_path.read_text(encoding="utf-8")
