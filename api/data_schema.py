@@ -15,3 +15,10 @@ DATA_TABLES = {
     "budget_history": ["id", "project_id", "fiscal_year", "amount", "source_id"],
     "tech_project_mapping": ["technology_id", "project_id", "relevance_score", "mapping_source"],
 }
+
+# 인제스트가 실제로 채우는 테이블만 위키 [[data:...]] 참조 대상으로 광고한다.
+# tech_project_mapping은 적재 경로가 없어(db.STAGED_TABLES에도 없다) 항상 비어 있다 —
+# 링크를 걸면 검증은 통과하고 빈 테이블로 안내한다. 사용자에겐 깨진 링크와 구분되지 않는다.
+# 적재 경로가 생기면 이 집합에서 빼면 된다.
+UNPOPULATED = {"tech_project_mapping"}
+LINKABLE_TABLES = {t: c for t, c in DATA_TABLES.items() if t not in UNPOPULATED}
