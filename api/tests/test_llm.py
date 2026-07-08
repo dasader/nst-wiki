@@ -86,3 +86,49 @@ def test_parse_purposes_use_low_thinking_and_long_timeout():
         cfg = llm.resolve_config(purpose)
         assert cfg["thinking_level"] == "low"
         assert cfg["timeout_ms"] == 180000
+
+
+def test_generate_records_usage_with_source_context(monkeypatch):
+    """호출마다 토큰 사용량을 적재하고, source_context 안이면 문서에 귀속시킨다."""
+    rec = {}
+
+    class _U:
+        prompt_token_count, candidates_token_count = 120, 30
+        thoughts_token_count, cached_content_token_count = 300, 40
+
+    class _R:
+        text = "ok"
+        usage_metadata = _U()
+
+    monkeypatch.setattr(llm, "_call_with_retry", lambda fn: _R())
+    monkeypatch.setattr(llm, "resolve_config",
+                        lambda p: {"model": "m1", "thinking_level": "low"})
+    from app import db
+
+    monkeypatch.setattr(db, "record_llm_usage", lambda **kw: rec.update(kw))
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")   # Client 생성만, 네트워크는 안 탄다
+
+    with llm.source_context("src-123"):
+        assert llm.generate("classify", "hi") == "ok"
+
+    assert rec["purpose"] == "classify" and rec["model"] == "m1"
+    assert rec["source_id"] == "src-123"
+    assert (rec["prompt_tokens"], rec["cached_tokens"]) == (120, 40)
+    assert (rec["output_tokens"], rec["thought_tokens"]) == (30, 300)
+
+
+def test_generate_survives_usage_recording_failure(monkeypatch):
+    """계측 실패가 LLM 호출을 죽이면 안 된다."""
+    class _R:
+        text = "ok"
+        usage_metadata = None   # 접근하면 AttributeError
+
+    monkeypatch.setattr(llm, "_call_with_retry", lambda fn: _R())
+    monkeypatch.setattr(llm, "resolve_config",
+                        lambda p: {"model": "m1", "thinking_level": "low"})
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")
+    assert llm.generate("classify", "hi") == "ok"   # 예외 없이 반환
+
+
+def test_source_context_defaults_to_none():
+    assert llm._current_source.get() is None

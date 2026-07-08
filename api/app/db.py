@@ -230,13 +230,57 @@ def delete_source(source_id: str) -> dict:
     return counts
 
 
+def record_llm_usage(purpose: str, model: str, source_id: str | None,
+                     prompt_tokens: int, cached_tokens: int, output_tokens: int,
+                     thought_tokens: int, latency_ms: int | None = None) -> None:
+    """Gemini 호출 한 건의 토큰 사용량 적재. 비용은 저장하지 않는다 (조회 시 단가로 계산)."""
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO llm_usage (purpose, model, source_id, prompt_tokens, cached_tokens, "
+            "output_tokens, thought_tokens, latency_ms) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (purpose, model, source_id, prompt_tokens, cached_tokens,
+             output_tokens, thought_tokens, latency_ms),
+        )
+
+
+_USAGE_COLS = ("count(*) AS calls, "
+               "COALESCE(sum(prompt_tokens),0) AS prompt_tokens, "
+               "COALESCE(sum(cached_tokens),0) AS cached_tokens, "
+               "COALESCE(sum(output_tokens),0) AS output_tokens, "
+               "COALESCE(sum(thought_tokens),0) AS thought_tokens")
+
+
+def usage_rollups() -> dict:
+    """비용 페이지용 집계 원자료. 토큰만 반환하고 금액 환산은 호출 측(단가 설정)이 한다."""
+    with connect() as conn:
+        return {
+            "since": (conn.execute("SELECT min(created_at) AS t FROM llm_usage")
+                      .fetchone()["t"]),
+            "by_model": conn.execute(
+                f"SELECT model, {_USAGE_COLS} FROM llm_usage GROUP BY model ORDER BY 2 DESC"
+            ).fetchall(),
+            "by_purpose": conn.execute(
+                f"SELECT purpose, model, {_USAGE_COLS} FROM llm_usage "
+                "GROUP BY purpose, model ORDER BY 3 DESC"
+            ).fetchall(),
+            "by_source": conn.execute(
+                f"SELECT source_id, model, {_USAGE_COLS} FROM llm_usage "
+                "WHERE source_id IS NOT NULL GROUP BY source_id, model"
+            ).fetchall(),
+            "query_side": conn.execute(
+                f"SELECT model, {_USAGE_COLS} FROM llm_usage "
+                "WHERE source_id IS NULL GROUP BY model"
+            ).fetchall(),
+        }
+
+
 TERMINAL_STATUSES = ["staged", "approved", "rejected", "failed"]
 
 # 전체 초기화 대상 (이름은 리터럴 화이트리스트). ministries는 시드 행 보존 때문에 별도 처리.
 # FK 참조(tech_project_mapping·budget_history)가 있어 한 TRUNCATE 문에 함께 넣는다.
 _RESET_TABLES = [
     "tech_project_mapping", "budget_history", "technologies", "projects",
-    "policy_events", "staging_tables", "ingest_tasks",
+    "policy_events", "staging_tables", "ingest_tasks", "llm_usage",
     "staging.technologies", "staging.projects", "staging.tech_project_mapping",
     "staging.budget_history", "staging.policy_events", "staging.ministries",
 ]

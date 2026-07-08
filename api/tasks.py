@@ -14,14 +14,16 @@ def run_ingest(task_id: str) -> None:
     task = db.get_task(task_id)
     db.set_status(task_id, "parsing")
     try:
+        import llm
         from pipeline.compile import compile_source
         from pipeline.parse import run_pipeline
 
         source_dir = Path(os.environ.get("SOURCES_PATH", "/data/sources")) / task["source_id"]
-        run_pipeline(source_dir)
-        db.set_status(task_id, "classifying")
         wiki_root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
-        results = compile_source(source_dir, task["source_id"], wiki_root)
+        with llm.source_context(task["source_id"]):  # 이 안의 모든 Gemini 호출을 문서에 귀속
+            run_pipeline(source_dir)
+            db.set_status(task_id, "classifying")
+            results = compile_source(source_dir, task["source_id"], wiki_root)
         db.save_results(task_id, results)
         db.set_status(task_id, "staged")
     except Exception as e:

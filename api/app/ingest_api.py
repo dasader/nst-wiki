@@ -189,6 +189,30 @@ def download_original(task_id: str):
     return FileResponse(orig, filename=f"{title}{orig.suffix}")
 
 
+@router.get("/admin/usage", dependencies=[Depends(require_admin)])
+def llm_usage():
+    """Gemini 토큰 사용량과 비용. 비용은 저장값이 아니라 현재 단가로 환산한 값이다."""
+    import cost
+
+    roll = db.usage_rollups()
+    by_source = [{**cost.priced(r), "title": _source_meta(r["source_id"]).get("title") or ""}
+                 for r in roll["by_source"]]
+    by_purpose = [cost.priced(r) for r in roll["by_purpose"]]
+    by_model = [cost.priced(r) for r in roll["by_model"]]
+    total = sum(r["cost_usd"] or 0 for r in by_model)
+    return {
+        "since": roll["since"],
+        "total_usd": total,
+        "total_calls": sum(r["calls"] for r in by_model),
+        "by_model": by_model,
+        "by_purpose": by_purpose,
+        "by_source": sorted(by_source, key=lambda r: r["cost_usd"] or 0, reverse=True),
+        "query_side": [cost.priced(r) for r in roll["query_side"]],
+        # 단가가 없는 모델은 0원으로 조용히 세지 않고 드러낸다 (no silent caps)
+        "unpriced_models": cost.unpriced_models(by_model),
+    }
+
+
 class ResetBody(BaseModel):
     force: bool = False  # 처리 중 태스크가 있어도 강행 (멈춘 태스크로 영구 차단되는 것 방지)
 
