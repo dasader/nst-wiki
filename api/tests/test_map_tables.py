@@ -15,6 +15,11 @@ def _write_table(parsed_dir, payload):
     )
 
 
+def _batch(*outs):
+    """단일/복수 매핑 결과를 배치 응답 형태로 감싼다 (map_table은 표 묶음을 한 번에 매핑)."""
+    return {"mappings": [{"index": i, **o} for i, o in enumerate(outs)]}
+
+
 def _cleanup(source_id):
     with db.connect() as conn:
         conn.execute("DELETE FROM staging.technologies WHERE source_id = %s", (source_id,))
@@ -25,10 +30,10 @@ def test_high_confidence_stages_rows(tmp_path, monkeypatch):
     source_id = str(uuid.uuid4())
     _write_table(tmp_path, {"table_title": "기술 목록", "columns": ["기술명", "분야"],
                             "rows": [["HBM", "반도체"], ["고체전지", "이차전지"]]})
-    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
         "table": "technologies", "confidence": 0.95,
         "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"}],
-    })
+    }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
         assert out == {"staged": [{"table": "technologies", "rows": 2}], "needs_review": 0}
@@ -45,9 +50,9 @@ def test_high_confidence_stages_rows(tmp_path, monkeypatch):
 def test_low_confidence_falls_back(tmp_path, monkeypatch):
     source_id = str(uuid.uuid4())
     _write_table(tmp_path, {"table_title": "알 수 없는 표", "columns": ["가", "나"], "rows": [["1", "2"]]})
-    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
         "table": "technologies", "confidence": 0.4, "column_mapping": []
-    })
+    }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
         assert out == {"staged": [], "needs_review": 1}
@@ -68,11 +73,11 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
     # 표에 없는 원본 컬럼(유령컬럼)과 빈 행이 크래시 없이 처리되는지 검증한다.
     _write_table(tmp_path, {"table_title": "기술 목록", "columns": ["기술명", "분야"],
                             "rows": [["HBM", "반도체"], []]})
-    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
         "table": "technologies", "confidence": 0.9,
         "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"},
                            {"src": "유령컬럼", "dst": "sub_field"}],
-    })
+    }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
         assert out == {"staged": [{"table": "technologies", "rows": 1}], "needs_review": 0}
@@ -116,11 +121,11 @@ def test_budget_table_stages_rows(tmp_path, monkeypatch):
     source_id = str(uuid.uuid4())
     _write_table(tmp_path, {"table_title": "연도별 예산", "columns": ["연도", "예산(백만원)"],
                             "rows": [["2024", "30,000"], ["2025", "45,000"]]})
-    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
         "table": "budget_history", "confidence": 0.95,
         "column_mapping": [{"src": "연도", "dst": "fiscal_year"},
                            {"src": "예산(백만원)", "dst": "amount"}],
-    })
+    }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
         assert out == {"staged": [{"table": "budget_history", "rows": 2}], "needs_review": 0}
@@ -144,3 +149,72 @@ def test_coerce_year_forms():
     assert mt._coerce("start_year", "2024") == 2024
     assert mt._coerce("end_year", "미정") is None
     assert mt._coerce("budget_total", "30,000") == 30000  # 예산 정수 경로 불변
+
+
+def _write_tables(parsed_dir, payloads):
+    (parsed_dir / "tables").mkdir(parents=True, exist_ok=True)
+    for i, p in enumerate(payloads):
+        (parsed_dir / "tables" / f"table_{i:03d}.json").write_text(
+            json.dumps(p, ensure_ascii=False), encoding="utf-8"
+        )
+
+
+def test_tables_are_mapped_in_one_batched_call(tmp_path, monkeypatch):
+    """표 여러 개를 표당 1회가 아니라 배치 1회로 매핑한다 (LLM 호출 수 절감)."""
+    source_id = str(uuid.uuid4())
+    _write_tables(tmp_path, [
+        {"table_title": f"기술 목록 {i}", "columns": ["기술명", "분야"],
+         "rows": [[f"기술{i}", "반도체"]]}
+        for i in range(3)
+    ])
+    calls = []
+
+    def fake(purpose, contents, schema=None):
+        calls.append(purpose)
+        return {"mappings": [
+            {"index": i, "table": "technologies", "confidence": 0.95,
+             "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"}]}
+            for i in range(3)
+        ]}
+
+    monkeypatch.setattr(mt.llm, "generate", fake)
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert len(calls) == 1, f"표 3개에 LLM 호출 {len(calls)}회 — 배치 안 됨"
+        assert out["needs_review"] == 0
+        assert sum(s["rows"] for s in out["staged"]) == 3
+    finally:
+        _cleanup(source_id)
+
+
+def test_table_missing_from_batch_response_goes_to_review(tmp_path, monkeypatch):
+    """배치 응답에서 빠진 표만 needs_review로 가고, 나머지는 정상 적재된다."""
+    source_id = str(uuid.uuid4())
+    _write_tables(tmp_path, [
+        {"table_title": "기술 목록", "columns": ["기술명", "분야"], "rows": [["HBM", "반도체"]]},
+        {"table_title": "누락될 표", "columns": ["가"], "rows": [["1"]]},
+    ])
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: {"mappings": [
+        {"index": 0, "table": "technologies", "confidence": 0.95,
+         "column_mapping": [{"src": "기술명", "dst": "name"}, {"src": "분야", "dst": "field"}]},
+    ]})   # index 1 없음
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out["staged"] == [{"table": "technologies", "rows": 1}]
+        assert out["needs_review"] == 1
+    finally:
+        _cleanup(source_id)
+
+
+def test_batch_llm_failure_sends_all_tables_to_review(tmp_path, monkeypatch):
+    """배치 호출 자체가 실패해도 인제스트가 죽지 않고 표 전부 needs_review로 남는다."""
+    source_id = str(uuid.uuid4())
+    _write_tables(tmp_path, [{"table_title": f"표{i}", "columns": ["가"], "rows": [["1"]]}
+                             for i in range(2)])
+    monkeypatch.setattr(mt.llm, "generate",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("gemini down")))
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out == {"staged": [], "needs_review": 2}
+    finally:
+        _cleanup(source_id)
