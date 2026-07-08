@@ -1,13 +1,36 @@
 """ingest_tasks 테이블 접근 헬퍼."""
 import json
 import os
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
+SCHEMA_DIR = Path(os.environ.get("SCHEMA_PATH", "/schema"))
+_SCHEMA_LOCK_KEY = 0x6E737477  # 'nstw' — api·worker 동시 기동 시 스키마 적용 직렬화
+
 
 def connect() -> psycopg.Connection:
     return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+
+
+def apply_schema(schema_dir: Path | None = None) -> list[str]:
+    """db/init/NNN_*.sql을 번호 순서대로 멱등 적용하고 적용한 파일명을 반환한다.
+
+    postgres의 docker-entrypoint-initdb.d는 데이터 디렉토리가 빌 때만 실행된다 — 기존 DB에는
+    새 SQL이 반영되지 않고, "README대로 psql로 직접 적용"은 아무도 하지 않는다(실제로 두 번
+    사고가 났다: 위키 미초기화, llm_usage 미생성). 모든 SQL이 멱등이므로 기동 때마다 다시
+    적용해 코드와 DB를 수렴시킨다.
+    """
+    d = SCHEMA_DIR if schema_dir is None else schema_dir
+    files = sorted(d.glob("[0-9][0-9][0-9]_*.sql")) if d.is_dir() else []
+    if not files:
+        return []
+    with connect() as conn:  # 한 트랜잭션 — 하나라도 실패하면 전부 롤백
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (_SCHEMA_LOCK_KEY,))
+        for f in files:
+            conn.execute(f.read_text(encoding="utf-8"))
+    return [f.name for f in files]
 
 
 def create_task(task_id: str, source_id: str, file_hash: str | None = None) -> None:

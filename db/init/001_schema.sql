@@ -1,5 +1,7 @@
+-- 재실행 안전(멱등): api 기동 시 이 디렉토리의 SQL을 순서대로 다시 적용한다.
+-- 버전 추적 테이블이 없으므로 멱등성이 그 대용이다 (002~007과 동일 관례).
 -- NEXT 기술 테이블
-CREATE TABLE technologies (
+CREATE TABLE IF NOT EXISTS technologies (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     field VARCHAR(50) NOT NULL,        -- 10개 NEXT 분야
@@ -14,7 +16,7 @@ CREATE TABLE technologies (
 );
 
 -- R&D 사업 테이블
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id SERIAL PRIMARY KEY,
     project_code VARCHAR(50) UNIQUE,
     name VARCHAR(200) NOT NULL,
@@ -28,7 +30,7 @@ CREATE TABLE projects (
 );
 
 -- 기술-사업 매핑 테이블
-CREATE TABLE tech_project_mapping (
+CREATE TABLE IF NOT EXISTS tech_project_mapping (
     technology_id INTEGER REFERENCES technologies(id),
     project_id INTEGER REFERENCES projects(id),
     relevance_score FLOAT,
@@ -37,7 +39,7 @@ CREATE TABLE tech_project_mapping (
 );
 
 -- 예산 이력 테이블
-CREATE TABLE budget_history (
+CREATE TABLE IF NOT EXISTS budget_history (
     id SERIAL PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id),
     fiscal_year INTEGER NOT NULL,
@@ -46,7 +48,7 @@ CREATE TABLE budget_history (
 );
 
 -- 정책 이벤트 로그
-CREATE TABLE policy_events (
+CREATE TABLE IF NOT EXISTS policy_events (
     id SERIAL PRIMARY KEY,
     event_date DATE NOT NULL,
     event_type VARCHAR(50),            -- reform/announcement/law/summit
@@ -59,7 +61,7 @@ CREATE TABLE policy_events (
 );
 
 -- 부처 테이블
-CREATE TABLE ministries (
+CREATE TABLE IF NOT EXISTS ministries (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     abbreviation VARCHAR(20),
@@ -67,7 +69,7 @@ CREATE TABLE ministries (
 );
 
 -- 매핑 불가 표 보존 (스키마 검토 대기)
-CREATE TABLE staging_tables (
+CREATE TABLE IF NOT EXISTS staging_tables (
     id SERIAL PRIMARY KEY,
     source_id VARCHAR(100) NOT NULL,
     table_title TEXT,                  -- 표 제목/캡션
@@ -79,7 +81,7 @@ CREATE TABLE staging_tables (
 );
 
 -- 인제스트 태스크 상태
-CREATE TABLE ingest_tasks (
+CREATE TABLE IF NOT EXISTS ingest_tasks (
     task_id VARCHAR(100) PRIMARY KEY,
     source_id VARCHAR(100) NOT NULL,
     status VARCHAR(30) NOT NULL,       -- queued/parsing/parsed/classifying/
@@ -96,10 +98,10 @@ CREATE TABLE ingest_tasks (
 -- 승인 대기 데이터용 staging 스키마 (스펙 5.2)
 -- ponytail: LIKE INCLUDING ALL — PK·기본값 복사, FK는 복사 안 됨(의도),
 -- 시퀀스는 public과 공유되어 승인 upsert 시 id 충돌 없음
-CREATE SCHEMA staging;
-CREATE TABLE staging.technologies (LIKE public.technologies INCLUDING ALL);
-CREATE TABLE staging.projects (LIKE public.projects INCLUDING ALL);
-CREATE TABLE staging.tech_project_mapping (LIKE public.tech_project_mapping INCLUDING ALL);
-CREATE TABLE staging.budget_history (LIKE public.budget_history INCLUDING ALL);
-CREATE TABLE staging.policy_events (LIKE public.policy_events INCLUDING ALL);
-CREATE TABLE staging.ministries (LIKE public.ministries INCLUDING ALL);
+CREATE SCHEMA IF NOT EXISTS staging;
+CREATE TABLE IF NOT EXISTS staging.technologies (LIKE public.technologies INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS staging.projects (LIKE public.projects INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS staging.tech_project_mapping (LIKE public.tech_project_mapping INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS staging.budget_history (LIKE public.budget_history INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS staging.policy_events (LIKE public.policy_events INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS staging.ministries (LIKE public.ministries INCLUDING ALL);
