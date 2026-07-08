@@ -6,6 +6,7 @@
   "map_table": {},
   "plan_pages": {},
   "merge_page": {},
+  "summarize_source": {},
   "text2sql": {},
   "route_query": {},
   "synthesize": {}
