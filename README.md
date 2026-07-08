@@ -18,12 +18,9 @@ curl http://localhost:8033/health
 
 위키 git 저장소(`/data/wiki`)는 첫 위키 쓰기 때 자동 초기화된다 (멱등).
 
-`db/init/NNN_*.sql`은 **빈 DB에서만** 자동 실행된다. 이미 운영 중인 DB에는 새로 추가된
-번호의 SQL을 한 번 직접 적용할 것:
-
-```bash
-docker exec -i <postgres컨테이너> psql -U wiki -d llm_wiki -v ON_ERROR_STOP=1 < db/init/007_llm_usage.sql
-```
+`db/init/NNN_*.sql`은 api 기동 때마다 번호 순으로 **멱등 적용**된다(`db.apply_schema`) —
+postgres의 initdb 훅은 빈 DB에서만 돌기 때문. 스키마를 추가할 땐 **재실행 안전하게** 쓸 것
+(`IF NOT EXISTS` / `ON CONFLICT` / 카탈로그 확인). 수동 psql 단계는 필요 없다.
 
 ## 구성
 

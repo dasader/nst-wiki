@@ -15,6 +15,7 @@ services:
       - wiki-data:/data/wiki
       - sources-data:/data/sources
       - model-cache:/root/.cache
+      - ./db/init:/schema:ro          # 기동 시 멱등 적용 (db.apply_schema)
     depends_on:
       postgres:
         condition: service_healthy

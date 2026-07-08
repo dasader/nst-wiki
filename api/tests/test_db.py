@@ -195,3 +195,28 @@ def test_list_tasks_recent_first():
     finally:
         db.delete_task(t1)
         db.delete_task(t2)
+
+
+def test_apply_schema_runs_in_order_and_is_idempotent(tmp_path):
+    """번호 순으로 적용(002가 001의 테이블에 의존) + 재실행 안전."""
+    (tmp_path / "002_b.sql").write_text(
+        "ALTER TABLE _probe_apply ADD COLUMN IF NOT EXISTS n text;", encoding="utf-8")
+    (tmp_path / "001_a.sql").write_text(
+        "CREATE TABLE IF NOT EXISTS _probe_apply (id int);", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("무시돼야 함", encoding="utf-8")
+    try:
+        assert db.apply_schema(tmp_path) == ["001_a.sql", "002_b.sql"]
+        db.apply_schema(tmp_path)   # 두 번째 실행도 실패하지 않는다
+        with db.connect() as conn:
+            cols = conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = '_probe_apply'").fetchall()
+        assert {c["column_name"] for c in cols} == {"id", "n"}
+    finally:
+        with db.connect() as conn:
+            conn.execute("DROP TABLE IF EXISTS _probe_apply")
+
+
+def test_apply_schema_without_schema_dir_is_noop(tmp_path):
+    """스키마 디렉토리가 마운트되지 않은 환경(워커·테스트)에서도 죽지 않는다."""
+    assert db.apply_schema(tmp_path / "없는디렉토리") == []
