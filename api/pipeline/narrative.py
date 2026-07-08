@@ -72,6 +72,10 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 - 내부 링크는 [[디렉토리/파일명]] 형식, 정형 수치는 본문 하드코딩 대신 [[data:테이블?조건]] 참조
 - 기존 서술과 새 정보가 충돌하면 본문을 임의로 교체하지 말고 contradictions에 기록하라
 
+내부 링크는 아래 목록의 페이지로만 걸 수 있다. 목록에 없으면 링크하지 말고 평문으로 써라
+(laws/·policy/ 같은 임의 디렉토리를 만들지 말 것):
+{link_targets}
+
 페이지 경로: {path} (title: {title})
 기존 내용 (신규 페이지면 빈 값):
 {current}
@@ -80,6 +84,26 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 {narrative}
 
 이 페이지에 관련된 내용만 반영하고, content에 페이지 전문을 반환하라."""
+
+
+LINK_RE = re.compile(r"\[\[([^\]:]+)\]\]")  # [[data:...]]는 콜론이 있어 매칭되지 않는다
+
+
+def _prune_dead_links(files: dict[str, str], existing: list[str]) -> None:
+    """실존하지 않는 페이지를 가리키는 [[링크]]를 평문으로 낮춘다 (in-place).
+
+    프롬프트로 대상 목록을 줘도 LLM은 laws/·policy/ 같은 없는 디렉토리나 미생성 페이지로
+    링크를 만든다. schema.md 규칙: "대상 페이지가 없으면 링크를 생략한다".
+    """
+    valid = {p if p.endswith(".md") else f"{p}.md" for p in (*existing, *files)}
+
+    def keep_or_flatten(m: re.Match) -> str:
+        target = m.group(1)
+        norm = target if target.endswith(".md") else f"{target}.md"
+        return m.group(0) if norm in valid else target
+
+    for path in files:
+        files[path] = LINK_RE.sub(keep_or_flatten, files[path])
 
 
 def _strip_uc(fm: str) -> str:
@@ -111,10 +135,16 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
                       narrative_texts: list[str]) -> dict:
     today = date.today().isoformat()
     narrative = "\n\n".join(narrative_texts)
-    existing = "\n".join(wiki_ops.list_pages(wiki_root)) or "(없음)"
+    existing_pages = wiki_ops.list_pages(wiki_root)
+    existing = "\n".join(existing_pages) or "(없음)"
     plan = llm.generate("plan_pages", PLAN_PROMPT.format(
         existing=existing, title=meta.get("title", ""), narrative=narrative,
     ), schema=PLAN_SCHEMA)
+
+    # 이번 배치에서 실제로 만들어질 페이지 = 링크를 걸어도 되는 대상 (기존 페이지와 합집합)
+    planned = [p["path"] for i, p in enumerate(plan["pages"])
+               if PATH_RE.match(p["path"]) and i < MAX_PAGES]
+    link_targets = "\n".join(sorted({*existing_pages, *planned})) or "(없음)"
 
     files: dict[str, str] = {}
     affected, contradictions = [], []
@@ -129,6 +159,7 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
         merged = llm.generate("merge_page", MERGE_PROMPT.format(
             source_id=source_id, today=today, path=page["path"], title=page["title"],
             current=current, doc_title=meta.get("title", ""), narrative=narrative,
+            link_targets=link_targets,
         ), schema=MERGE_SCHEMA)
         content = merged["content"]
         if merged["contradictions"]:
@@ -149,4 +180,5 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
             for i, c in enumerate(contradictions)
         )
         files["contradictions/log.md"] = log.rstrip("\n") + "\n" + rows
+    _prune_dead_links(files, existing_pages)  # 모든 페이지 확정 후: 깨진 링크 평문화
     return {"files": files, "affected_pages": affected, "contradictions": contradictions}
