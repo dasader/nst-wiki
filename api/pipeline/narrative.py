@@ -90,12 +90,38 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 이 페이지에 관련된 내용만 반영하고, content에 페이지 전문을 반환하라."""
 
 
+SUMMARY_PROMPT = """다음 정책문서를 위키 요약 페이지용으로 요약하라.
+
+규칙:
+- 마크다운 소제목(##)으로 구조화한다. 문서 제목은 반복하지 않는다
+- 핵심 목표·대상 기술·추진 체계·수치 목표를 빠뜨리지 않는다
+- 원문에 없는 내용을 지어내지 않는다
+- 위키 링크([[...]])와 표는 넣지 않는다 — 서술형 문장으로 쓴다
+
+문서 제목: {title}
+문서 내용:
+{narrative}"""
+
+
+def _summarize(title: str, narrative: str) -> str:
+    """소스 요약 페이지 본문 — LLM 요약.
+
+    요약 호출 실패로 인제스트 전체를 죽이지 않는다. 실패하면 원문 발췌로 대체하고 경고를 남긴다.
+    """
+    try:
+        return str(llm.generate("summarize_source", SUMMARY_PROMPT.format(
+            title=title, narrative=narrative,
+        ))).strip()
+    except Exception:
+        log.warning("소스 요약 실패 — 원문 발췌로 대체", exc_info=True)
+        return _excerpt(narrative)
+
+
 def _excerpt(text: str, limit: int = SUMMARY_CHARS) -> str:
-    """소스 요약 페이지에 실을 발췌. 줄 경계에서 자르고, 잘렸으면 그 사실을 명시한다.
+    """요약 실패 시의 대체 본문. 줄 경계에서 자르고, 잘렸으면 그 사실을 명시한다.
 
     문장 한가운데서 끊으면 "쓰다 만 문서"로 읽힌다. 잘라낸 사실도 조용히 숨기지 않는다
     (no silent caps).
-    ponytail: 원문 앞부분을 그대로 싣는 발췌 — 진짜 요약이 필요하면 llm.generate("synthesize")로 승격.
     """
     if len(text) <= limit:
         return text
@@ -190,9 +216,10 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
         for c in merged["contradictions"]:
             contradictions.append({**c, "page": page["path"]})
 
+    title = meta.get("title", source_id)
     files[f"summaries/{source_id}.md"] = (
-        f"# {meta.get('title', source_id)}\n\n- source_id: {source_id}\n"
-        f"- ingest: {today}\n\n{_excerpt(narrative)}\n"
+        f"# {title}\n\n- source_id: {source_id}\n"
+        f"- ingest: {today}\n\n{_summarize(title, narrative)}\n"
     )
     if contradictions:
         log = wiki_ops.read_page(wiki_root, "contradictions/log.md") or ""

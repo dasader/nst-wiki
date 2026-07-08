@@ -4,12 +4,14 @@ from scripts.init_wiki import init_wiki
 import pipeline.narrative as narrative
 
 
-def _fake_llm(plan_pages, merged):
+def _fake_llm(plan_pages, merged, summary="## 개요\n요약 본문"):
     def fake(purpose, contents, schema=None):
         if purpose == "plan_pages":
             return {"pages": plan_pages}
         if purpose == "merge_page":
             return merged
+        if purpose == "summarize_source":
+            return summary
         raise AssertionError(f"unexpected purpose: {purpose}")
     return fake
 
@@ -114,29 +116,45 @@ def test_compile_narrative_prunes_dead_links(tmp_path, monkeypatch):
     assert "tech/없는페이지" in md
 
 
-def test_summary_excerpt_cuts_on_line_boundary_and_marks_truncation(tmp_path, monkeypatch):
-    """요약 페이지는 문장 중간에서 끊기지 않고, 잘렸으면 그 사실을 명시한다 (no silent caps)."""
+def test_summary_page_uses_llm_summary(tmp_path, monkeypatch):
+    """요약 페이지 본문은 원문 앞부분 복사가 아니라 LLM 요약이다."""
     init_wiki(tmp_path)
-    lines = [f"line{i:02d}" + "x" * 100 for i in range(40)]   # 각 줄 106자, 총 >2000자
+    long_narr = "\n".join(f"line{i:02d}" + "x" * 100 for i in range(40))  # >2000자
     monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
         plan_pages=[], merged={"content": "", "contradictions": []},
+        summary="## 개요\n국가전략기술 12대 분야를 선정한다.",
     ))
-    out = narrative.compile_narrative(tmp_path, "src5", {"title": "문서"}, ["\n".join(lines)])
-    page = out["files"]["summaries/src5.md"]
+    page = narrative.compile_narrative(
+        tmp_path, "src5", {"title": "문서"}, [long_narr])["files"]["summaries/src5.md"]
+    assert "국가전략기술 12대 분야를 선정한다." in page
+    assert "xxxxx" not in page      # 원문 발췌가 아님
+    assert "발췌" not in page       # 절단 표시도 없음
 
-    assert "발췌" in page                                  # 잘렸음을 표시
-    body = page.split("- ingest:", 1)[1].split("\n", 1)[1].strip()
-    excerpt = body.split("\n\n_(", 1)[0]
-    for ln in excerpt.splitlines():
+
+def test_summary_falls_back_to_excerpt_when_llm_fails(tmp_path, monkeypatch):
+    """요약 호출이 실패해도 인제스트를 죽이지 않고 원문 발췌로 대체한다."""
+    init_wiki(tmp_path)
+    long_narr = "\n".join(f"line{i:02d}" + "x" * 100 for i in range(40))
+
+    def fake(purpose, contents, schema=None):
+        if purpose == "summarize_source":
+            raise RuntimeError("gemini down")
+        return {"pages": []} if purpose == "plan_pages" else {"content": "", "contradictions": []}
+
+    monkeypatch.setattr(narrative.llm, "generate", fake)
+    page = narrative.compile_narrative(
+        tmp_path, "src6", {"title": "문서"}, [long_narr])["files"]["summaries/src6.md"]
+    assert "발췌" in page and "line00" in page
+
+
+def test_excerpt_cuts_on_line_boundary_and_marks_truncation():
+    """발췌는 줄 경계에서 자르고, 잘렸으면 명시한다 (no silent caps)."""
+    text = "\n".join(f"line{i:02d}" + "x" * 100 for i in range(40))   # 각 줄 106자
+    out = narrative._excerpt(text)
+    assert "발췌" in out
+    for ln in out.split("\n\n_(", 1)[0].splitlines():
         assert len(ln) == 106, f"줄이 중간에서 잘림: {ln[-20:]!r}"
 
 
-def test_summary_short_narrative_is_not_marked(tmp_path, monkeypatch):
-    """짧은 서사는 그대로 싣고 발췌 표시를 붙이지 않는다."""
-    init_wiki(tmp_path)
-    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
-        plan_pages=[], merged={"content": "", "contradictions": []},
-    ))
-    out = narrative.compile_narrative(tmp_path, "src6", {"title": "문서"}, ["짧은 서사입니다."])
-    page = out["files"]["summaries/src6.md"]
-    assert "짧은 서사입니다." in page and "발췌" not in page
+def test_excerpt_leaves_short_text_untouched():
+    assert narrative._excerpt("짧은 서사입니다.") == "짧은 서사입니다."
