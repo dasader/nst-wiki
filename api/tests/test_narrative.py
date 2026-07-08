@@ -92,3 +92,23 @@ def test_compile_narrative_caps_at_15(tmp_path, monkeypatch):
     assert len(updated) == 15
     assert len(suggested) == 5
     assert sum(1 for f in out["files"] if f.startswith("tech/")) == 15
+
+
+def test_compile_narrative_prunes_dead_links(tmp_path, monkeypatch):
+    """LLM이 만든 '없는 페이지' 링크는 평문으로 낮춘다 (schema.md: 깨진 링크 금지).
+    실존/동일배치 생성 페이지 링크와 [[data:...]] 참조는 보존한다."""
+    init_wiki(tmp_path)
+    content = ("본문 [[tech/a]] [[laws/국가전략기술육성법]] [[tech/없는페이지]] "
+               "[[data:technologies?field=반도체]]")
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[{"path": "tech/a.md", "action": "create", "title": "A"}],
+        merged={"content": content, "contradictions": []},
+    ))
+    out = narrative.compile_narrative(tmp_path, "src4", {"title": "문서"}, ["서사"])
+    md = out["files"]["tech/a.md"]
+    assert "[[tech/a]]" in md                            # 같은 배치에서 생성 → 유지
+    assert "[[data:technologies?field=반도체]]" in md      # data 참조는 그대로
+    assert "[[laws/국가전략기술육성법]]" not in md          # 없는 디렉토리 → 평문화
+    assert "laws/국가전략기술육성법" in md
+    assert "[[tech/없는페이지]]" not in md                 # 없는 페이지 → 평문화
+    assert "tech/없는페이지" in md
