@@ -1,6 +1,8 @@
 import os
 import uuid as _uuid
 
+import pytest
+
 os.environ.setdefault("ADMIN_API_KEY", "testkey")
 os.environ.setdefault("DATABASE_URL", "postgresql://wiki:devpass@127.0.0.1:5433/llm_wiki")
 
@@ -210,3 +212,52 @@ def test_approve_reverts_to_staged_on_wiki_failure(monkeypatch):
         assert real_db.get_task(task_id)["status"] == "staged"  # 되돌려짐 — 재시도 가능
     finally:
         real_db.delete_task(task_id)
+
+
+def test_reset_requires_admin_key():
+    assert client.post("/api/v1/admin/reset", headers={"X-Admin-Key": "wrong"}).status_code == 401
+
+
+def test_reset_409_when_tasks_in_flight(monkeypatch):
+    """처리 중 태스크가 있으면 거부하고, 파괴적 초기화는 시작조차 하지 않는다."""
+    from app import ingest_api
+
+    monkeypatch.setattr(ingest_api.db, "list_in_flight",
+                        lambda: [{"task_id": "t", "source_id": "s", "status": "parsing"}])
+    monkeypatch.setattr(ingest_api.db, "reset_all",
+                        lambda: pytest.fail("in-flight인데 reset_all이 호출됨"))
+    r = client.post("/api/v1/admin/reset", headers={"X-Admin-Key": "testkey"}, json={})
+    assert r.status_code == 409
+    assert "처리 중인 태스크가 1건" in r.json()["detail"]
+
+
+class _FakeQdrant:
+    def collection_exists(self, name):
+        return True
+
+    def delete_collection(self, name):
+        self.deleted = name
+
+
+def test_reset_force_bypasses_in_flight_guard(tmp_path, monkeypatch):
+    """force=true면 멈춘 태스크가 있어도 진행한다 (영구 차단 방지)."""
+    import embeddings
+    from app import ingest_api
+
+    called = {}
+    monkeypatch.setattr(ingest_api.db, "list_in_flight",
+                        lambda: pytest.fail("force면 in-flight 검사를 건너뛰어야 함"))
+    monkeypatch.setattr(ingest_api.db, "reset_all", lambda: called.setdefault("db", True) or {})
+    monkeypatch.setattr(ingest_api.wiki_ops, "reset_repo",
+                        lambda root: called.setdefault("wiki", True))
+    monkeypatch.setattr(ingest_api, "_wiki_root", lambda: tmp_path / "wiki")
+    (tmp_path / "sources" / "s1").mkdir(parents=True)
+    monkeypatch.setattr(ingest_api, "_sources_root", lambda: tmp_path / "sources")
+    monkeypatch.setattr(embeddings, "qdrant", lambda: _FakeQdrant())
+    monkeypatch.setattr(embeddings, "ensure_collection", lambda c: None)
+
+    r = client.post("/api/v1/admin/reset", headers={"X-Admin-Key": "testkey"},
+                    json={"force": True})
+    assert r.status_code == 200 and r.json()["sources_removed"] == 1
+    assert called == {"db": True, "wiki": True}
+    assert not (tmp_path / "sources" / "s1").exists()   # 업로드 원본 삭제

@@ -230,6 +230,45 @@ def delete_source(source_id: str) -> dict:
     return counts
 
 
+TERMINAL_STATUSES = ["staged", "approved", "rejected", "failed"]
+
+# 전체 초기화 대상 (이름은 리터럴 화이트리스트). ministries는 시드 행 보존 때문에 별도 처리.
+# FK 참조(tech_project_mapping·budget_history)가 있어 한 TRUNCATE 문에 함께 넣는다.
+_RESET_TABLES = [
+    "tech_project_mapping", "budget_history", "technologies", "projects",
+    "policy_events", "staging_tables", "ingest_tasks",
+    "staging.technologies", "staging.projects", "staging.tech_project_mapping",
+    "staging.budget_history", "staging.policy_events", "staging.ministries",
+]
+
+
+def list_in_flight() -> list[dict]:
+    """아직 종료 상태가 아닌 태스크 (queued/parsing/parsed/classifying). 초기화를 막는 대상."""
+    with connect() as conn:
+        return conn.execute(
+            "SELECT task_id, source_id, status FROM ingest_tasks WHERE NOT (status = ANY(%s))",
+            (TERMINAL_STATUSES,),
+        ).fetchall()
+
+
+def reset_all() -> dict:
+    """모든 인제스트 데이터를 지워 새 배포 상태로 되돌린다. 되돌릴 수 없다.
+
+    스키마는 건드리지 않는다 (설계 원칙 5 — DDL은 db/init/NNN_*.sql로만).
+    ministries의 시드 행(source_id IS NULL, 006_seed_ministries.sql)은 새 배포에도
+    존재하므로 보존하고, 인제스트로 들어온 행만 지운다.
+    """
+    counts: dict[str, int] = {}
+    with connect() as conn:  # 한 트랜잭션 — 부분 초기화로 FK가 어긋나지 않게
+        for t in _RESET_TABLES:
+            counts[t] = conn.execute(f"SELECT count(*) AS n FROM {t}").fetchone()["n"]
+        conn.execute(f"TRUNCATE {', '.join(_RESET_TABLES)} RESTART IDENTITY")
+        counts["ministries"] = conn.execute(
+            "DELETE FROM ministries WHERE source_id IS NOT NULL"  # 시드(NULL)는 보존
+        ).rowcount
+    return counts
+
+
 def list_tasks(limit: int = 50) -> list[dict]:
     with connect() as conn:
         return conn.execute(
