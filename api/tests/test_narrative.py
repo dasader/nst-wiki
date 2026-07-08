@@ -183,3 +183,21 @@ def test_compile_narrative_unwraps_dead_data_refs_keeping_value(tmp_path, monkey
     assert "값 없는 참조는 지운다" in md                 # 값 없으면 앞 공백까지 제거
     assert "전략기술?" not in md and "[[data:전략기술" not in md
     assert "[[data:budget_history?fiscal_year=2024]]" in md   # 실존 테이블 → 링크 유지
+
+
+def test_unpopulated_table_refs_are_not_offered_or_kept(tmp_path, monkeypatch):
+    """적재 경로가 없어 항상 비는 테이블은 프롬프트에서 광고하지도, 링크로 남기지도 않는다.
+
+    링크가 남으면 검증은 통과하고 빈 테이블로 안내한다 — 사용자에겐 깨진 링크와 구분되지 않는다.
+    """
+    assert "tech_project_mapping" not in narrative.DATA_TARGETS
+    init_wiki(tmp_path)
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[{"path": "tech/a.md", "action": "create", "title": "A"}],
+        merged={"content": "연관도는 [[data:tech_project_mapping?relevance_score=0.9]] 수준.",
+                "contradictions": []},
+    ))
+    md = narrative.compile_narrative(
+        tmp_path, "src8", {"title": "문서"}, ["서사"])["files"]["tech/a.md"]
+    assert "연관도는 0.9 수준" in md
+    assert "tech_project_mapping" not in md
