@@ -1,4 +1,4 @@
-"""Gemini 네이티브 PDF 파싱 (Docling 대체). 2회 호출: 마크다운 + 구조화 표.
+"""Gemini 네이티브 PDF 파싱. 2회 호출: 마크다운 + 구조화 표.
 두 호출 모두 PDF Part를 맨 앞에 둬 암묵적 캐싱을 활성화한다."""
 import json
 import logging
