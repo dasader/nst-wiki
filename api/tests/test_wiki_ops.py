@@ -191,3 +191,20 @@ def test_delete_page_removes_and_is_idempotent(tmp_path):
     assert not (tmp_path / "summaries" / "s1.md").exists()
     assert "summaries/s1.md" not in _git_out(tmp_path, "ls-tree", "-r", "--name-only", "main")
     assert wiki_ops.delete_page(tmp_path, "summaries/s1.md", "delete: s1") is False  # 멱등
+
+
+def test_reset_repo_wipes_history_and_reinitializes(tmp_path):
+    """전체 초기화: 페이지·브랜치·git 이력이 사라지고 초기 상태로 재생성된다."""
+    init_wiki(tmp_path)
+    wiki_ops.stage_changes(tmp_path, "s30", {"tech/x.md": "# X"}, "ingest: 문서")
+    wiki_ops.approve_branch(tmp_path, "s30", "approve: 문서")
+    assert (tmp_path / "tech" / "x.md").exists()
+
+    wiki_ops.reset_repo(tmp_path)
+
+    assert not (tmp_path / "tech" / "x.md").exists()          # 페이지 삭제
+    assert (tmp_path / "index.md").is_file()                  # 초기 구조 재생성
+    assert (tmp_path / "schema.md").is_file()
+    assert _git_out(tmp_path, "branch", "--list", "ingest/*") == ""   # 브랜치 없음
+    log = _git_out(tmp_path, "log", "--oneline", "main").strip().splitlines()
+    assert len(log) == 1 and "위키 저장소 초기화" in log[0]   # 이력은 초기 커밋 하나뿐

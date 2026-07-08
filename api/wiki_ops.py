@@ -1,5 +1,6 @@
 """위키 git 저장소 조작. 쓰기는 ingest/{source_id} 브랜치에만 — main 직접 커밋 금지."""
 import fcntl
+import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -193,3 +194,13 @@ def reject_branch(root: Path, source_id: str) -> None:
         _git(root, "clean", "-fd")
         if _branch_exists(root, branch):
             _git(root, "branch", "-D", branch)
+
+
+def reset_repo(root: Path) -> None:
+    """위키 저장소를 통째로 비우고 초기 상태로 재생성한다. git 이력까지 사라진다 — 되돌릴 수 없다."""
+    with _lock(root):  # 인제스트 워커와 직렬화
+        for p in root.iterdir():
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+        from scripts.init_wiki import init_wiki  # 지연 임포트: 순환 회피 (_ensure_repo와 동일)
+
+        init_wiki(root)

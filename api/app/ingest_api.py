@@ -189,6 +189,45 @@ def download_original(task_id: str):
     return FileResponse(orig, filename=f"{title}{orig.suffix}")
 
 
+class ResetBody(BaseModel):
+    force: bool = False  # 처리 중 태스크가 있어도 강행 (멈춘 태스크로 영구 차단되는 것 방지)
+
+
+@router.post("/admin/reset", dependencies=[Depends(require_admin)])
+def reset_everything(body: ResetBody | None = None):
+    """전체 초기화: DB·위키 저장소·업로드 원본·Qdrant 색인을 새 배포 상태로 되돌린다.
+
+    되돌릴 수 없다. 스키마와 ministries 시드 행은 보존한다.
+    """
+    if not (body and body.force):
+        in_flight = db.list_in_flight()
+        if in_flight:
+            raise HTTPException(status_code=409, detail=(
+                f"처리 중인 태스크가 {len(in_flight)}건 있습니다 "
+                f"({', '.join(sorted({t['status'] for t in in_flight}))}). "
+                "끝나길 기다리거나 force=true로 강행하세요."
+            ))
+    counts = db.reset_all()
+    wiki_ops.reset_repo(_wiki_root())
+
+    sources = _sources_root()
+    removed = 0
+    if sources.is_dir():
+        for p in sources.iterdir():
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+            removed += 1
+
+    # Qdrant는 마지막 — 실패해도 POST /reindex로 복구 가능. 모듈 임포트는 가볍다(BGE-M3는 지연 로드).
+    import embeddings
+
+    client = embeddings.qdrant()
+    if client.collection_exists(embeddings.COLLECTION):
+        client.delete_collection(embeddings.COLLECTION)
+    embeddings.ensure_collection(client)
+
+    return {"status": "reset", "db": counts, "sources_removed": removed}
+
+
 @router.post("/reindex", dependencies=[Depends(require_admin)])
 def reindex():
     from tasks import reindex_all

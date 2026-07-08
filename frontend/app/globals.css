@@ -167,6 +167,10 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 }
 .btn-ghost:hover { background: var(--surface-2); border-color: var(--ink-3); }
 .btn-sm { padding: 7px 12px; font-size: 0.85rem; }
+/* 되돌릴 수 없는 파괴적 동작 전용 — 시각적으로 확실히 구분한다 */
+.btn-danger { background: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: #8f2d2d; }
+.btn-danger:focus-visible { box-shadow: 0 0 0 3px var(--danger-tint); }
 
 /* ── 칩 / 배지 ───────────────────────────────── */
 .chip {

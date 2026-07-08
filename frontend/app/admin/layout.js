@@ -7,6 +7,7 @@ const TABS = [
   { href: "/admin", label: "승인 대기" },
   { href: "/admin/upload", label: "문서 업로드" },
   { href: "/admin/edit", label: "위키 편집" },
+  { href: "/admin/reset", label: "위험 구역" },
 ];
 
 export default function AdminLayout({ children }) {
