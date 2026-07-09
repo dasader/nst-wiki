@@ -1,8 +1,11 @@
 """자연어 질의: 의도 분류 → 서사(벡터)/데이터(SQL)/혼합 → 합성 (스펙 6.2)."""
 import json
+import os
+import time
+from collections import defaultdict, deque
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import llm
@@ -12,12 +15,6 @@ import text2sql
 router = APIRouter(prefix="/api/v1")
 
 # ponytail: 인메모리 rate limit — uvicorn 단일 프로세스 전제 (스펙 8.3), 다중 워커 도입 시 redis로
-import os
-import time
-from collections import defaultdict, deque
-
-from fastapi import HTTPException, Request
-
 RATE_LIMIT = int(os.environ.get("QUERY_RATE_LIMIT", "10"))  # 분당 IP별
 _hits: dict[str, deque] = defaultdict(deque)
 
@@ -30,6 +27,10 @@ def _check_rate(ip: str) -> None:
     if len(q) >= RATE_LIMIT:
         raise HTTPException(status_code=429, detail="rate limit exceeded")
     q.append(now)
+    # 조용한 IP의 빈 deque가 무한히 쌓이지 않게: dict가 커지면 60초 이상 잠잠한 키를 청소
+    if len(_hits) > 4096:
+        for k in [k for k, v in _hits.items() if not v or now - v[-1] > 60]:
+            del _hits[k]
 
 
 ROUTE_SCHEMA = {

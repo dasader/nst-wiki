@@ -1,11 +1,11 @@
 """위키 데이터 저장소를 초기화한다. 멱등: 이미 git 저장소면 아무것도 하지 않는다."""
-import os
 import subprocess
 from pathlib import Path
 
 import wiki_ops
 
-DIRS = ["tech", "entity", "events", "synthesis", "summaries", "contradictions"]
+# 페이지 디렉토리는 wiki_ops.PAGE_DIRS 단일 출처 + 모순 로그 디렉토리
+DIRS = [*wiki_ops.PAGE_DIRS, "contradictions"]
 
 SCHEMA_MD = """\
 # 위키 운영 규칙 (LLM 컴파일 규칙서)
@@ -68,8 +68,7 @@ LOG_MD = """\
 """
 
 
-def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+_git = wiki_ops._git  # 동일한 git 실행 헬퍼 — wiki_ops의 것을 재사용
 
 
 def init_wiki(root: Path) -> bool:
@@ -92,6 +91,6 @@ def init_wiki(root: Path) -> bool:
 
 
 if __name__ == "__main__":
-    root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+    root = wiki_ops.wiki_root()
     created = init_wiki(root)
     print(f"initialized: {root}" if created else f"already initialized: {root}")

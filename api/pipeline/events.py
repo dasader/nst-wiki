@@ -70,20 +70,20 @@ def extract_and_stage_events(narrative_texts: list[str], source_id: str) -> dict
         PROMPT.format(narrative="\n\n".join(narrative_texts)[:20000]),
         schema=EVENTS_SCHEMA,
     )
-    n = 0
-    with db.connect() as conn:
-        for ev in out.get("events", []):
-            d = _coerce_date(ev.get("event_date", ""))
-            title = (ev.get("title") or "").strip()
-            if not d or not title:
-                continue
-            fields = [canon_field(f) for f in ev.get("affected_fields") or []]  # 12분야 정규 표기
-            conn.execute(
+    rows = []
+    for ev in out.get("events", []):
+        d = _coerce_date(ev.get("event_date", ""))
+        title = (ev.get("title") or "").strip()
+        if not d or not title:
+            continue
+        fields = [canon_field(f) for f in ev.get("affected_fields") or []]  # 12분야 정규 표기
+        rows.append((d, (ev.get("event_type") or "").strip(), title,
+                     (ev.get("description") or "").strip(), fields or None, source_id))
+    if rows:
+        with db.connect() as conn:
+            conn.cursor().executemany(
                 "INSERT INTO staging.policy_events (event_date, event_type, title, "
                 "description, affected_fields, source_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                (d, (ev.get("event_type") or "").strip(), title,
-                 (ev.get("description") or "").strip(),
-                 fields or None, source_id),
+                rows,
             )
-            n += 1
-    return {"staged": n}
+    return {"staged": len(rows)}

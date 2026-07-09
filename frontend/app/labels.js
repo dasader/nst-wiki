@@ -66,6 +66,18 @@ export function prettify(key) {
   return String(key).replace(/_/g, " ");
 }
 
+// 페이지 경로 → 표시 슬러그: tech/hbm.md → hbm · 과기정통부.md → 과기정통부
+export function pageSlug(path) {
+  const s = String(path);
+  return s.replace(/\.md$/, "").split("/").slice(1).join("/") || s;
+}
+
+// /wiki/view 딥링크 (선택적 검색어 q 유지)
+export function wikiViewHref(path, q) {
+  const base = `/wiki/view?path=${encodeURIComponent(path)}`;
+  return q ? `${base}&q=${encodeURIComponent(q)}` : base;
+}
+
 export function colLabel(table, key) {
   return COLS[table]?.[key] ?? SHARED_COLS[key] ?? prettify(key);
 }

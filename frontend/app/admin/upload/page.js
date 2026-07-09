@@ -15,11 +15,14 @@ export default function UploadPage() {
   const pick = useRef(null);
 
   function addFiles(fileList) {
-    const next = [...fileList].map((file) => ({
-      id: ++seq, file, invalid: !!validateFile(file),
-      title: baseName(file.name), publisher: "", tags: "", publish_date: "",
-      st: validateFile(file) || "대기", err: !!validateFile(file), ok: false, done: false,
-    }));
+    const next = [...fileList].map((file) => {
+      const problem = validateFile(file);
+      return {
+        id: ++seq, file, invalid: !!problem,
+        title: baseName(file.name), publisher: "", tags: "", publish_date: "",
+        st: problem || "대기", err: !!problem, ok: false, done: false,
+      };
+    });
     setItems((prev) => [...prev, ...next]);
   }
   const patch = (id, fields) =>

@@ -193,22 +193,23 @@ def _stage_one(payload: dict, out: dict, source_id: str, result: dict) -> None:
         return
     col_idx = {c: i for i, c in enumerate(payload["columns"])}
     dst_cols = list(mapping.values()) + ["source_id"]
-    n = 0
-    with db.connect() as conn:
-        for row in payload["rows"]:
-            values = [
-                _coerce(dst, row[col_idx[src]]) if col_idx[src] < len(row) else None
-                for src, dst in mapping.items()
-            ]
-            if all(v is None for v in values):
-                continue
-            conn.execute(
+    params = []
+    for row in payload["rows"]:
+        values = [
+            _coerce(dst, row[col_idx[src]]) if col_idx[src] < len(row) else None
+            for src, dst in mapping.items()
+        ]
+        if all(v is None for v in values):
+            continue
+        params.append(values + [source_id])
+    if params:
+        with db.connect() as conn:
+            conn.cursor().executemany(
                 f"INSERT INTO staging.{table} ({', '.join(dst_cols)}) "
                 f"VALUES ({', '.join(['%s'] * len(dst_cols))})",
-                values + [source_id],
+                params,
             )
-            n += 1
-    result["staged"].append({"table": table, "rows": n})
+    result["staged"].append({"table": table, "rows": len(params)})
 
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:

@@ -11,18 +11,17 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 import wiki_ops
-from app.ingest_api import require_admin
+from app.auth import require_admin
+from data_schema import DATA_TABLES  # 조회 API와 위키 링크 검증의 단일 출처
 
 router = APIRouter(prefix="/api/v1")
 
-# 새 페이지 허용 경로: PAGE_DIRS/ + 파일명(영문·한글·숫자·.-_). narrative.PATH_RE와 동일 규칙 + summaries
-_NEW_PAGE_RE = re.compile(r"^(tech|entity|events|synthesis|summaries)/[\w가-힣.-]+\.md$")
-
-from data_schema import DATA_TABLES  # noqa: E402  (조회 API와 위키 링크 검증의 단일 출처)
+# 새 페이지 허용 경로: PAGE_DIRS/ + 파일명(영문·한글·숫자·.-_) — 디렉토리 목록은 wiki_ops 단일 출처
+_NEW_PAGE_RE = wiki_ops.page_path_re()
 
 
 def _root() -> Path:
-    return Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+    return wiki_ops.wiki_root()
 
 
 def _main_pages(root: Path) -> list[str]:
@@ -34,10 +33,12 @@ def _main_pages(root: Path) -> list[str]:
             if p.endswith(".md") and p.split("/")[0] in wiki_ops.PAGE_DIRS]
 
 
-def _page_titles(root: Path) -> dict[str, str]:
-    """각 페이지 프론트매터의 title을 한 번의 git grep으로 수집한다 (path → 한글 제목)."""
+def _page_titles(root: Path, paths: list[str] | None = None) -> dict[str, str]:
+    """각 페이지 프론트매터의 title을 한 번의 git grep으로 수집한다 (path → 한글 제목).
+    paths를 주면 그 페이지들로만 한정한다 (검색 결과처럼 소수만 필요할 때 전수 grep 회피)."""
+    pathspec = paths if paths else ["*.md"]
     out = subprocess.run(
-        ["git", "-C", str(root), "grep", "--max-count=1", "-e", "^title:", "main", "--", "*.md"],
+        ["git", "-C", str(root), "grep", "--max-count=1", "-e", "^title:", "main", "--", *pathspec],
         capture_output=True, text=True,
     ).stdout
     titles: dict[str, str] = {}
@@ -64,8 +65,10 @@ def _parse_query(q: str) -> tuple[list[str], str]:
 
 
 @router.get("/wiki")
-def wiki_list():
+def wiki_list(pages_only: bool = False):
     root = _root()
+    if pages_only:  # 뷰어·감사는 경로 목록만 필요 — 제목 수집(git grep 전수)을 생략
+        return {"pages": _main_pages(root)}
     return {"pages": _main_pages(root), "titles": _page_titles(root)}
 
 
@@ -136,14 +139,10 @@ def wiki_search(q: str = Query(..., min_length=1)):
         args += ["-e", t]
     args += ["main", "--", "*.md"]
     out = subprocess.run(args, capture_output=True, text=True)
-    titles = _page_titles(root)
-    results = []
-    for line in out.stdout.splitlines()[:50]:
-        # 형식: main:tech/a.md:12:내용
-        parts = line.split(":", 3)
-        if len(parts) >= 4:
-            path = parts[1]
-            results.append({"path": path, "title": titles.get(path), "line": parts[3][:200]})
+    # 형식: main:tech/a.md:12:내용 — 결과 경로만 모아 제목을 한정 조회 (전수 grep 회피)
+    parsed = [p for p in (ln.split(":", 3) for ln in out.stdout.splitlines()[:50]) if len(p) >= 4]
+    titles = _page_titles(root, [p[1] for p in parsed]) if parsed else {}
+    results = [{"path": p[1], "title": titles.get(p[1]), "line": p[3][:200]} for p in parsed]
     return {"results": results}
 
 
