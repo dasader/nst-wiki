@@ -310,7 +310,7 @@ _RESET_TABLES = [
 
 
 def list_in_flight() -> list[dict]:
-    """아직 종료 상태가 아닌 태스크 (queued/parsing/parsed/classifying). 초기화를 막는 대상."""
+    """아직 종료 상태가 아닌 태스크 (queued/parsing/classifying). 초기화를 막는 대상."""
     with connect() as conn:
         return conn.execute(
             "SELECT task_id, source_id, status FROM ingest_tasks WHERE NOT (status = ANY(%s))",

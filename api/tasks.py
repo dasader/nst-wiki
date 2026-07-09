@@ -1,10 +1,10 @@
 """Celery 앱과 인제스트 태스크. 워커 실행: celery -A tasks worker"""
 import os
-from pathlib import Path
 
 from celery import Celery
 
 from app import db
+import wiki_ops
 
 celery = Celery("nst_wiki", broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
 
@@ -18,8 +18,8 @@ def run_ingest(task_id: str) -> None:
         from pipeline.compile import compile_source
         from pipeline.parse import run_pipeline
 
-        source_dir = Path(os.environ.get("SOURCES_PATH", "/data/sources")) / task["source_id"]
-        wiki_root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+        source_dir = wiki_ops.sources_root() / task["source_id"]
+        wiki_root = wiki_ops.wiki_root()
         with llm.source_context(task["source_id"]):  # 이 안의 모든 Gemini 호출을 문서에 귀속
             run_pipeline(source_dir)
             db.set_status(task_id, "classifying")
@@ -34,9 +34,8 @@ def run_ingest(task_id: str) -> None:
 @celery.task(name="embed.pages", time_limit=1800)
 def embed_pages(paths: list[str]) -> int:
     import embeddings
-    import wiki_ops
 
-    root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+    root = wiki_ops.wiki_root()
     client = embeddings.qdrant()
     embeddings.ensure_collection(client)
     n = 0
@@ -60,7 +59,4 @@ def unindex_pages(paths: list[str]) -> int:
 
 @celery.task(name="embed.reindex", time_limit=3600)
 def reindex_all() -> int:
-    import wiki_ops
-
-    root = Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
-    return embed_pages(wiki_ops.list_pages(root))
+    return embed_pages(wiki_ops.list_pages(wiki_ops.wiki_root()))

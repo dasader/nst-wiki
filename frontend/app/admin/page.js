@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { adminFetch } from "./adminAuth";
+import Loading from "../Loading";
 
 // 상태 → 필터 그룹 · 사람 라벨 · 칩 색 (dashboard 구버전과 동일 규약)
 const GROUP = {
@@ -34,10 +35,11 @@ export default function ApprovalQueue() {
   }
 
   useEffect(() => {
+    if (selected) return;   // 상세 검토 중엔 목록 폴링 중단 (돌아오면 재개)
     loadList();
     const t = setInterval(loadList, 15000);
     return () => clearInterval(t);
-  }, []);
+  }, [selected]);
 
   if (selected)
     return <ReviewDetail taskId={selected} onBack={() => setSelected(null)} onChanged={loadList} />;
@@ -174,7 +176,7 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
         <p style={{ margin: "0 0 14px" }}>
           <a role="button" tabIndex={0} onClick={onBack} style={{ cursor: "pointer" }}>← 승인 대기</a>
         </p>
-        <div className="empty-state"><span className="spinner" /> 불러오는 중…</div>
+        <Loading />
       </div>
     );
 

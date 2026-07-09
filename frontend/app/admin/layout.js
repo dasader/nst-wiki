@@ -2,6 +2,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getKey, setKey, clearKey, verifyKey } from "./adminAuth";
+import Loading from "../Loading";
 
 const TABS = [
   { href: "/admin", label: "승인 대기" },
@@ -47,12 +48,7 @@ export default function AdminLayout({ children }) {
     setKeyInput("");
   }
 
-  if (authed === null)
-    return (
-      <div className="empty-state">
-        <span className="spinner" /> 확인 중…
-      </div>
-    );
+  if (authed === null) return <Loading label="확인 중…" />;
 
   if (!authed)
     return (

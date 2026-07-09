@@ -1,18 +1,17 @@
 """소스 업로드·상태 조회 엔드포인트 (스펙 6.1절)."""
 import hashlib
-import hmac
 import json
-import os
 import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import db
+from app.auth import require_admin
 import wiki_ops
 
 router = APIRouter(prefix="/api/v1")
@@ -25,12 +24,7 @@ class ApproveBody(BaseModel):
 
 
 def _wiki_root() -> Path:
-    return Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
-
-
-def require_admin(x_admin_key: str = Header(default="")) -> None:
-    if not hmac.compare_digest(x_admin_key, os.environ["ADMIN_API_KEY"]):
-        raise HTTPException(status_code=401, detail="invalid admin key")
+    return wiki_ops.wiki_root()
 
 
 @router.get("/admin/verify", dependencies=[Depends(require_admin)])
@@ -123,7 +117,7 @@ def reject(task_id: str):
 
 
 def _sources_root() -> Path:
-    return Path(os.environ.get("SOURCES_PATH", "/data/sources"))
+    return wiki_ops.sources_root()
 
 
 def _source_meta(source_id: str) -> dict:
@@ -283,7 +277,7 @@ async def ingest(
                 "교체하려면 기존 태스크를 먼저 거부하거나 force=true로 다시 올리세요."
             ))
     source_id, task_id = str(uuid.uuid4()), str(uuid.uuid4())
-    src_dir = Path(os.environ.get("SOURCES_PATH", "/data/sources")) / source_id
+    src_dir = _sources_root() / source_id
     src_dir.mkdir(parents=True)
     (src_dir / f"original{ext}").write_bytes(data)
     meta = {

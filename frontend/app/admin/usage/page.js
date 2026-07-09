@@ -75,7 +75,7 @@ export default function UsagePage() {
         <div className="card error" style={{ marginTop: 14 }}>
           <b>단가 미등록 모델:</b> {data.unpriced_models.join(", ")}
           <p style={{ marginBottom: 0, fontSize: "0.85rem" }}>
-            이 모델의 호출은 총액에서 <b>빠져</b> 있습니다. <code>api/llm_pricing.json</code>에 단가를 추가하세요.
+            이 모델의 호출은 총액에서 <b>빠져</b> 있습니다. <code>api/cost.py</code>의 PRICING에 단가를 추가하세요.
           </p>
         </div>
       )}

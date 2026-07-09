@@ -39,7 +39,7 @@ def prune_committed_pages(root: Path, dry_run: bool = False) -> list[str]:
 
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
-    root = Path("/data/wiki")
+    root = wiki_ops.wiki_root()
     changed = prune_committed_pages(root, dry_run=dry)
     print(f"{'[dry-run] ' if dry else ''}정리된 페이지 {len(changed)}개")
     for p in changed:

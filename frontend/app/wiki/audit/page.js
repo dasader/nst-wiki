@@ -1,15 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
 import { auditLinks } from "../../links";
-
-const view = (p) => `/wiki/view?path=${encodeURIComponent(p)}`;
+import { wikiViewHref as view } from "../../labels";
+import Loading from "../../Loading";
 
 export default function WikiAudit() {
   const [st, setSt] = useState({ loading: true });
 
   useEffect(() => {
     (async () => {
-      const list = await fetch("/api/v1/wiki").then((r) => r.json());
+      const list = await fetch("/api/v1/wiki?pages_only=1").then((r) => r.json());
       const valid = new Set(list.pages);
       const results = [];
       // ponytail: 프론트에서 페이지별로 fetch. 페이지 수가 커지면 백엔드 /wiki/audit 엔드포인트로 옮긴다.
@@ -37,7 +37,7 @@ export default function WikiAudit() {
       </p>
 
       {st.loading ? (
-        <div className="empty-state"><span className="spinner" /> 전체 페이지 검사 중…</div>
+        <Loading label="전체 페이지 검사 중…" />
       ) : count === 0 ? (
         <div className="card"><p className="muted" style={{ margin: 0 }}>
           검사한 {st.total.toLocaleString("ko-KR")}개 페이지에서 깨진 링크가 없습니다. ✓

@@ -13,7 +13,8 @@ log = logging.getLogger(__name__)
 MAX_PAGES = 15
 SUMMARY_CHARS = 2000
 
-PATH_RE = re.compile(r"^(tech|entity|events|synthesis)/[\w가-힣.-]+\.md$")
+# 서사 페이지 경로: summaries/는 제외한다 — 소스 요약은 파이프라인이 자동 생성하고 LLM 계획 대상이 아니다
+PATH_RE = wiki_ops.page_path_re([d for d in wiki_ops.PAGE_DIRS if d != "summaries"])
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -248,11 +249,11 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
         f"- ingest: {today}\n\n{_summarize(title, narrative)}\n"
     )
     if contradictions:
-        log = wiki_ops.read_page(wiki_root, "contradictions/log.md") or ""
+        contra_log = wiki_ops.read_page(wiki_root, "contradictions/log.md") or ""
         rows = "".join(
             f"| {source_id[:8]}-{i+1} | {today} | {c['page']} | {c['summary']} | {c['existing']} | {c['new']} | 미해결 |\n"
             for i, c in enumerate(contradictions)
         )
-        files["contradictions/log.md"] = log.rstrip("\n") + "\n" + rows
+        files["contradictions/log.md"] = contra_log.rstrip("\n") + "\n" + rows
     prune_dead_links(files, existing_pages)  # 모든 페이지 확정 후: 깨진 링크 평문화
     return {"files": files, "affected_pages": affected, "contradictions": contradictions}

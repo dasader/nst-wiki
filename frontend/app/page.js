@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Markdown from "./Markdown";
+import { pageSlug, wikiViewHref } from "./labels";
 
 const MODES = [
   { v: "auto", label: "자동" },
@@ -14,9 +15,6 @@ const EXAMPLES = [
   "부처별 R&D 예산 규모를 알려줘",
   "12개 분야가 10개로 재편된 이유는?",
 ];
-
-// 근거 인용 경로를 읽기 쉬운 문서명으로: tech/hbm-semiconductor.md → hbm-semiconductor
-const citeName = (path) => path.replace(/\.md$/, "").split("/").slice(1).join("/") || path;
 
 export default function QueryPage() {
   const [q, setQ] = useState("");
@@ -84,8 +82,8 @@ export default function QueryPage() {
               <div className="card-label" style={{ marginBottom: 10 }}>근거 문서</div>
               <div className="row">
                 {res.citations.map((c) => (
-                  <a key={c.path} className="chip" href={`/wiki/view?path=${encodeURIComponent(c.path)}`}>
-                    {citeName(c.path)}
+                  <a key={c.path} className="chip" href={wikiViewHref(c.path)}>
+                    {pageSlug(c.path)}
                   </a>
                 ))}
               </div>

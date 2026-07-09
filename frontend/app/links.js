@@ -1,6 +1,6 @@
 // 위키 [[...]] 링크의 변환·유효성 검사 단일 소스. 렌더(wiki/view)와 감사(wiki/audit)가 공유한다.
 // 대상이 실존하지 않으면 #dead-page/#dead-data 센티넬 href로 바꿔 Markdown이 비활성 표식으로 렌더한다.
-import { TABLE_LABELS, COLUMNS } from "./labels.js";
+import { TABLE_LABELS, COLUMNS, wikiViewHref } from "./labels.js";
 
 const VALID_TABLES = new Set(Object.keys(TABLE_LABELS));
 const COND_RE = /^\s*([\w가-힣]+)\s*[=:]\s*(.+?)\s*$/;   // 조건 "컬럼=값" / "컬럼:값" 하나만 해석
@@ -35,7 +35,7 @@ export function linkifyWiki(md, validPaths) {
       const path = p.endsWith(".md") ? p : p + ".md";
       return validPaths && !validPaths.has(path)
         ? `[${p}](#dead-page)`
-        : `[${p}](/wiki/view?path=${encodeURIComponent(path)})`;
+        : `[${p}](${wikiViewHref(path)})`;
     });
 }
 

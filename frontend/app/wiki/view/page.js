@@ -2,6 +2,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Markdown from "../../Markdown";
+import Loading from "../../Loading";
+import { pageSlug } from "../../labels";
 import { linkifyWiki } from "../../links";
 
 function splitFrontmatter(md) {
@@ -28,7 +30,7 @@ function Viewer() {
   const [validPaths, setValidPaths] = useState(null);   // 링크 유효성 검사용 실존 페이지 Set
 
   useEffect(() => {
-    fetch("/api/v1/wiki")
+    fetch("/api/v1/wiki?pages_only=1")   // 링크 검증엔 경로 목록만 필요 (제목 불필요)
       .then((r) => (r.ok ? r.json() : null))
       .then((b) => b && setValidPaths(new Set(b.pages)));
   }, []);
@@ -42,10 +44,10 @@ function Viewer() {
   }, [path]);
 
   if (err) return <div className="card error">{err}</div>;
-  if (!page) return <div className="empty-state"><span className="spinner" /> 불러오는 중…</div>;
+  if (!page) return <Loading />;
 
   const { front, body } = splitFrontmatter(page.content_md);
-  const title = field(front, "title") || page.path.split("/").pop().replace(/\.md$/, "");
+  const title = field(front, "title") || pageSlug(page.path);
   const type = field(front, "type");
   const nextField = field(front, "next_field");
 
@@ -88,5 +90,5 @@ function Viewer() {
 }
 
 export default function WikiView() {
-  return <Suspense fallback={<div className="empty-state"><span className="spinner" /> 불러오는 중…</div>}><Viewer /></Suspense>;
+  return <Suspense fallback={<Loading />}><Viewer /></Suspense>;
 }

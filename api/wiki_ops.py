@@ -1,11 +1,28 @@
 """위키 git 저장소 조작. 쓰기는 ingest/{source_id} 브랜치에만 — main 직접 커밋 금지."""
 import fcntl
+import os
+import re
 import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
 PAGE_DIRS = ["tech", "entity", "events", "synthesis", "summaries"]
+
+
+def wiki_root() -> Path:
+    """위키 git 저장소 경로 — WIKI_REPO_PATH 기본값의 단일 출처."""
+    return Path(os.environ.get("WIKI_REPO_PATH", "/data/wiki"))
+
+
+def sources_root() -> Path:
+    """업로드 원본 저장 경로 — SOURCES_PATH 기본값의 단일 출처."""
+    return Path(os.environ.get("SOURCES_PATH", "/data/sources"))
+
+
+def page_path_re(dirs: list[str] = PAGE_DIRS) -> re.Pattern:
+    """PAGE_DIRS/파일명.md 형태의 페이지 경로 정규식 — 디렉토리 목록의 단일 출처."""
+    return re.compile(rf"^({'|'.join(dirs)})/[\w가-힣.-]+\.md$")
 
 
 def _git(root: Path, *args: str) -> str:

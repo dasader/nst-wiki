@@ -1,12 +1,10 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { WIKI_DIRS } from "../labels";
+import { WIKI_DIRS, pageSlug as slug, wikiViewHref as view } from "../labels";
+import Loading from "../Loading";
 
-// tech/hbm-semiconductor.md → hbm-semiconductor / 과기정통부.md → 과기정통부
-const slug = (p) => p.split("/").slice(1).join("/").replace(/\.md$/, "");
 const dirOf = (p) => p.split("/")[0];
-const view = (p, q) => `/wiki/view?path=${encodeURIComponent(p)}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
 
 // 검색어 낱말(연산자·따옴표 제외)을 스니펫에서 하이라이트
 function highlight(text, query) {
@@ -137,5 +135,5 @@ function WikiListInner() {
 }
 
 export default function WikiList() {
-  return <Suspense fallback={<div className="empty-state"><span className="spinner" /> 불러오는 중…</div>}><WikiListInner /></Suspense>;
+  return <Suspense fallback={<Loading />}><WikiListInner /></Suspense>;
 }
