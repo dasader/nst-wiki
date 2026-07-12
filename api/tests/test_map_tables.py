@@ -218,3 +218,62 @@ def test_batch_llm_failure_sends_all_tables_to_review(tmp_path, monkeypatch):
         assert out == {"staged": [], "needs_review": 2}
     finally:
         _cleanup(source_id)
+
+
+# --- 티어 2 (metrics) melt 경로 ---
+
+def test_melt_metrics_wide_table():
+    """와이드 표(대상 + 연도 컬럼)를 (entity, metric, year, value, unit) 롱포맷으로 melt."""
+    payload = {"table_title": "연도별 예산", "columns": ["사업명", "2024", "2025", "'26"],
+               "rows": [["AI반도체", "100", "150", "200"], ["양자", "50", "", "80"]]}
+    out = {"table": "metrics", "confidence": 0.9, "entity_col": "사업명",
+           "metric_name": "예산", "unit": "백만원"}
+    rows = mt._melt_metrics(payload, out)
+    # AI반도체 3개(2024/25/26) + 양자 2개(2025 빈칸 제외) = 5
+    assert rows == [
+        ("AI반도체", "예산", 2024, 100.0, "백만원"),
+        ("AI반도체", "예산", 2025, 150.0, "백만원"),
+        ("AI반도체", "예산", 2026, 200.0, "백만원"),
+        ("양자", "예산", 2024, 50.0, "백만원"),
+        ("양자", "예산", 2026, 80.0, "백만원"),
+    ]
+
+
+def test_melt_metrics_rejects_when_no_year_columns():
+    """연도 컬럼이 없으면(이미 롱포맷이거나 비시계열) [] → 호출부가 검토 대기로."""
+    payload = {"columns": ["사업명", "금액"], "rows": [["AI", "100"]]}
+    out = {"table": "metrics", "confidence": 0.9, "entity_col": "사업명",
+           "metric_name": "예산", "unit": "백만원"}
+    assert mt._melt_metrics(payload, out) == []
+
+
+def test_canon_metric_and_num():
+    assert mt.canon_metric("예 산") == "예산"          # 공백 무시 정규화
+    assert mt.canon_metric("R&D 투자") == "R&D 투자"    # 어휘 밖은 원문 유지(clean)
+    assert mt._num("1,234") == 1234.0
+    assert mt._num("12.5%") == 12.5
+    assert mt._num("미정") is None
+
+
+def test_metrics_stages_rows(tmp_path, monkeypatch):
+    """table=metrics 매핑이 staging.metrics에 롱포맷으로 적재되는지 (DB 통합)."""
+    source_id = str(uuid.uuid4())
+    _write_table(tmp_path, {"table_title": "연도별 인력", "columns": ["분야", "2024", "2025"],
+                            "rows": [["반도체", "10", "20"]]})
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
+        "table": "metrics", "confidence": 0.95, "entity_col": "분야",
+        "metric_name": "인력", "unit": "명",
+    }))
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out == {"staged": [{"table": "metrics", "rows": 2}], "needs_review": 0}
+        with db.connect() as conn:
+            rows = conn.execute(
+                "SELECT entity, metric_name, year, value, unit FROM staging.metrics "
+                "WHERE source_id = %s ORDER BY year", (source_id,),
+            ).fetchall()
+        assert [(r["year"], float(r["value"])) for r in rows] == [(2024, 10.0), (2025, 20.0)]
+        assert rows[0]["metric_name"] == "인력" and rows[0]["unit"] == "명"
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM staging.metrics WHERE source_id = %s", (source_id,))

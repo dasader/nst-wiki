@@ -53,6 +53,12 @@ _FIELD_SYNONYMS = {
 # 조회 키는 표기 정규화(공백·가운뎃점 제거) 후 casefold — "6g"·"hbm"·"uam" 대소문자 무관 매칭
 _SYN_LOOKUP = {_FIELD_NORM.sub("", k).casefold(): v for k, v in _FIELD_SYNONYMS.items()}
 
+# 티어 2(metrics) 통제 어휘. metric_name을 여기에 맞춰 정규화(공백·가운뎃점 무시).
+# 없으면 원문 유지하되, 새 지표가 반복 등장하면 수요 기반으로 여기 추가 — EAV 붕괴 방지용
+# 최소 어휘다(설계서 4.4/12.4).
+METRIC_VOCAB = ["예산", "인력", "목표", "실적", "건수", "비중", "매출", "투자"]
+_METRIC_LOOKUP = {_FIELD_NORM.sub("", m): m for m in METRIC_VOCAB}
+
 
 def _clean_str(s: str) -> str:
     s = s.strip()
@@ -70,10 +76,22 @@ def canon_field(s: str) -> str:
     return _SYN_LOOKUP.get(norm.casefold(), s)  # 세부주제 별칭, 없으면 원문 그대로
 
 
+def canon_metric(s: str) -> str:
+    return _METRIC_LOOKUP.get(_FIELD_NORM.sub("", s or ""), _clean_str(s or ""))
+
+
+def _num(val):
+    """지표 값 → float. value 컬럼이 NUMERIC이라 소수·퍼센트를 보존(amount의 int 절삭과 다름)."""
+    try:
+        return float(str(val).replace(",", "").replace("%", "").strip())
+    except (ValueError, AttributeError):
+        return None
+
+
 _MAP_ITEM = {
-    "table": {"type": "string", "enum": list(CORE_TABLES) + ["none"]},
+    "table": {"type": "string", "enum": list(CORE_TABLES) + ["metrics", "none"]},
     "confidence": {"type": "number"},
-    "column_mapping": {
+    "column_mapping": {                  # 티어 1(엔티티 테이블)용 1:1 대응
         "type": "array",
         "items": {
             "type": "object",
@@ -81,7 +99,12 @@ _MAP_ITEM = {
             "required": ["src", "dst"],
         },
     },
+    # 티어 2(metrics)용 — table=="metrics"일 때만 채운다 (column_mapping은 비움)
+    "entity_col": {"type": "string"},    # 대상 라벨이 든 표 컬럼명
+    "metric_name": {"type": "string"},   # 지표명 (예: 예산, 인력)
+    "unit": {"type": "string"},          # 단위 (백만원, 명 등)
 }
+_REQUIRED = ["table", "confidence", "column_mapping"]  # 티어 2 필드는 선택
 
 BATCH_SCHEMA = {
     "type": "object",
@@ -91,7 +114,7 @@ BATCH_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {"index": {"type": "integer"}, **_MAP_ITEM},
-                "required": ["index", *_MAP_ITEM],
+                "required": ["index", *_REQUIRED],
             },
         }
     },
@@ -111,8 +134,15 @@ PROMPT = """한국 정책문서에서 추출한 표들을 DB 스키마에 매핑
 {tables}
 
 각 표마다 mappings에 항목을 하나씩 반환하라. index는 위 표 번호를 그대로 쓴다.
-표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 [{{"src": "표 컬럼명", "dst": "DB 컬럼명"}}, ...] 목록을,
-대응하지 않으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
+표가 위 테이블 중 하나에 대응하면 table에 테이블명, column_mapping에 [{{"src": "표 컬럼명", "dst": "DB 컬럼명"}}, ...] 목록을 반환하라.
+
+위 테이블엔 안 맞지만 **연도별 수치**가 반복되는 표(예: 연도별 예산·인력·목표·실적, 컬럼 헤더가 '24·2025 같은 연도)는
+table에 "metrics"를 반환하고 다음을 채워라 (column_mapping은 비운다):
+- entity_col: 지표 대상(사업명·기술명·분야 등)이 든 표 컬럼명
+- metric_name: 지표명 — 가능하면 {metric_vocab} 중 하나로
+- unit: 단위 (백만원, 명, 건, % 등)
+
+셋 중 어디에도 안 맞으면 table에 "none"을 반환하라. confidence는 매핑 확신도(0~1)."""
 
 
 def _render(payloads: list[dict]) -> str:
@@ -128,6 +158,7 @@ def _map_batch(payloads: list[dict], schema_desc: str) -> dict[int, dict]:
     """표 묶음을 LLM 호출 1회로 매핑. index로 표와 정렬한다(누락·재정렬 방어)."""
     out = llm.generate("map_table", PROMPT.format(
         schema_desc=schema_desc, tables=_render(payloads),
+        metric_vocab=", ".join(METRIC_VOCAB),
     ), schema=BATCH_SCHEMA)
     return {m["index"]: m for m in out.get("mappings", [])
             if isinstance(m, dict) and isinstance(m.get("index"), int)}
@@ -180,9 +211,55 @@ def _stash_for_review(payload: dict, suggestion: dict, confidence: float,
     result["needs_review"] += 1
 
 
+def _melt_metrics(payload: dict, out: dict) -> list[tuple]:
+    """와이드 표(대상 + 연도 컬럼들)를 (entity, metric_name, year, value, unit) 롱포맷으로 melt.
+    부적합(대상 컬럼 없음·연도 컬럼 없음·지표명 없음)하면 [] — 호출부가 검토 대기로 넘긴다.
+    ponytail: 연도가 컬럼 헤더인 와이드 표만 지원. 이미 롱포맷인 표는 []→검토 대기(티어 3).
+    반복되면 롱포맷 감지 추가."""
+    cols = payload["columns"]
+    entity_col = out.get("entity_col")
+    metric = canon_metric(out.get("metric_name", ""))
+    unit = _clean_str(out.get("unit") or "") or None
+    year_cols = [(i, _years(c)[0]) for i, c in enumerate(cols) if _years(c)]
+    if entity_col not in cols or not year_cols or not metric:
+        return []
+    ei = cols.index(entity_col)
+    rows = []
+    for row in payload["rows"]:
+        if ei >= len(row):
+            continue
+        entity = _clean_str(str(row[ei]))
+        if not entity:
+            continue
+        for ci, yr in year_cols:
+            if ci >= len(row):
+                continue
+            val = _num(row[ci])
+            if val is not None:
+                rows.append((entity, metric, yr, val, unit))
+    return rows
+
+
+def _stage_metrics(payload: dict, out: dict, source_id: str, result: dict) -> None:
+    rows = _melt_metrics(payload, out) if out["confidence"] >= CONFIDENCE_THRESHOLD else []
+    if not rows:
+        _stash_for_review(payload, out, out["confidence"], source_id, result)
+        return
+    params = [list(r) + [source_id] for r in rows]
+    with db.connect() as conn:
+        conn.cursor().executemany(
+            "INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s)", params,
+        )
+    result["staged"].append({"table": "metrics", "rows": len(params)})
+
+
 def _stage_one(payload: dict, out: dict, source_id: str, result: dict) -> None:
     """매핑 결과 하나를 staging에 적재하거나, 확신도가 낮으면 검토 대기로 넘긴다."""
     table = out["table"]
+    if table == "metrics":               # 티어 2: 롱포맷 melt 경로
+        _stage_metrics(payload, out, source_id, result)
+        return
     raw_mapping = {m["src"]: m["dst"] for m in out.get("column_mapping", [])
                    if isinstance(m, dict) and "src" in m and "dst" in m}
     mapping = {s: d for s, d in raw_mapping.items()

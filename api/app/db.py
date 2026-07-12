@@ -87,7 +87,7 @@ def save_results(task_id: str, results: dict) -> None:
         )
 
 
-STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries", "budget_history"]
+STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries", "budget_history", "metrics"]
 
 _UPSERT_SQL = {
     "technologies": """
@@ -155,6 +155,13 @@ _UPSERT_SQL = {
         SELECT fiscal_year, amount, source_id
         FROM staging.budget_history
         WHERE source_id = %s AND fiscal_year IS NOT NULL AND amount IS NOT NULL
+    """,
+    # 티어 2 지표: 자연키 없이 단순 INSERT (budget_history와 동일 관례).
+    # 동일 소스 재승인은 상태 가드(409)가 막고, 교차 소스 중복은 (entity,metric,year) 다르면 발생 안 함
+    "metrics": """
+        INSERT INTO metrics (entity, metric_name, year, value, unit, source_id)
+        SELECT entity, metric_name, year, value, unit, source_id
+        FROM staging.metrics WHERE source_id = %s
     """,
 }
 
@@ -302,10 +309,10 @@ TERMINAL_STATUSES = ["staged", "approved", "rejected", "failed"]
 # 전체 초기화 대상 (이름은 리터럴 화이트리스트). ministries는 시드 행 보존 때문에 별도 처리.
 # FK 참조(tech_project_mapping·budget_history)가 있어 한 TRUNCATE 문에 함께 넣는다.
 _RESET_TABLES = [
-    "tech_project_mapping", "budget_history", "technologies", "projects",
+    "tech_project_mapping", "budget_history", "metrics", "technologies", "projects",
     "policy_events", "staging_tables", "ingest_tasks", "llm_usage",
     "staging.technologies", "staging.projects", "staging.tech_project_mapping",
-    "staging.budget_history", "staging.policy_events", "staging.ministries",
+    "staging.budget_history", "staging.metrics", "staging.policy_events", "staging.ministries",
 ]
 
 

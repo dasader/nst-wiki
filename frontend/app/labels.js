@@ -7,6 +7,7 @@ export const TABLE_LABELS = {
   policy_events: "정책 변화",
   ministries: "부처·기관",
   budget_history: "예산 이력",
+  metrics: "지표",
   tech_project_mapping: "기술–사업 연계",
 };
 
@@ -31,6 +32,7 @@ const COLS = {
   },
   tech_project_mapping: { relevance_score: "연관도", mapping_source: "매핑 출처" },
   budget_history: { fiscal_year: "회계연도", amount: "금액" },
+  metrics: { entity: "대상", metric_name: "지표", year: "연도", value: "값", unit: "단위" },
   policy_events: {
     event_date: "일자", event_type: "유형", title: "제목", description: "설명", affected_fields: "영향 분야",
   },
