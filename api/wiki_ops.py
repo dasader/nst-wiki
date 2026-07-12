@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -183,7 +184,7 @@ def diff_branch(root: Path, source_id: str) -> str:
 
 def approve_branch(root: Path, source_id: str, message: str,
                    resolutions: dict[str, str] | None = None,
-                   resolve_conflict=None) -> None:
+                   resolve_conflict: Callable[[str, str, str, str], str] | None = None) -> None:
     """ingest 브랜치를 main에 squash 병합한다.
 
     resolve_conflict(path, base, ours, theirs)->str가 주어지면, 두 문서가 같은 페이지를

@@ -127,7 +127,7 @@ def resolve_page_conflict(path: str, base: str, ours: str, theirs: str) -> str:
     merged = llm.generate("resolve_conflict", RESOLVE_PROMPT.format(
         path=path, base=base or "(없음)", ours=ours, theirs=theirs,
     ), schema=RESOLVE_SCHEMA)
-    return str(merged["content"])
+    return merged["content"]
 
 
 SUMMARY_PROMPT = """다음 정책문서를 위키 요약 페이지용으로 요약하라.
