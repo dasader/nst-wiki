@@ -334,7 +334,6 @@ CREATE TABLE metrics (
     year INTEGER,                      -- 시점(연도); 시계열이 아니면 NULL
     value NUMERIC NOT NULL,
     unit VARCHAR(30),                  -- 백만원, 명, 건 등
-    wiki_page_path VARCHAR(200),
     source_id VARCHAR(100),
     created_at TIMESTAMP DEFAULT NOW()
 );
