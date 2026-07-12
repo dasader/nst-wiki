@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -29,6 +30,19 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
     ).stdout
+
+
+def _restore_main(root: Path) -> None:
+    """작업 트리를 깨끗한 main으로 되돌린다 (squash 병합은 MERGE_HEAD가 없어 abort 불가)."""
+    _git(root, "checkout", "-f", "main")
+    _git(root, "clean", "-fd")
+
+
+def _show_stage(root: Path, stage: int, path: str) -> str:
+    """충돌 인덱스의 한 단계 내용. :1:=공통조상 :2:=main측 :3:=병합 브랜치측. 없으면 빈 문자열."""
+    out = subprocess.run(["git", "-C", str(root), "show", f":{stage}:{path}"],
+                         capture_output=True, text=True)
+    return out.stdout if out.returncode == 0 else ""
 
 
 def _ensure_repo(root: Path) -> None:
@@ -169,13 +183,19 @@ def diff_branch(root: Path, source_id: str) -> str:
 
 
 def approve_branch(root: Path, source_id: str, message: str,
-                   resolutions: dict[str, str] | None = None) -> None:
+                   resolutions: dict[str, str] | None = None,
+                   resolve_conflict: Callable[[str, str, str, str], str] | None = None) -> None:
+    """ingest 브랜치를 main에 squash 병합한다.
+
+    resolve_conflict(path, base, ours, theirs)->str가 주어지면, 두 문서가 같은 페이지를
+    각각 갱신해 진짜 충돌이 난 경우 그 콜백으로 두 판을 하나로 합쳐 자동 해소한다
+    (동시 업로드 승인 시 500 대신). 콜백이 없으면 종전대로 사람 해결을 요구하며 예외.
+    """
     branch = f"ingest/{source_id}"
     with _lock(root):
         if not _branch_exists(root, branch):
             return  # 이미 병합·삭제된 브랜치 — 재시도 멱등
-        _git(root, "checkout", "-f", "main")
-        _git(root, "clean", "-fd")
+        _restore_main(root)
         # 3-way 병합으로 공유 페이지 내용은 합치되, 파생 파일 index.md는 병합 대상에서 제외한다.
         # index.md는 PAGE_DIRS에서 재생성되는 파일이라 브랜치가 오래되면 항상 충돌한다 —
         # check=False로 진행시키고 아래서 재생성으로 확정 해소한다.
@@ -183,12 +203,24 @@ def approve_branch(root: Path, source_id: str, message: str,
                        capture_output=True, text=True)
         (root / "index.md").write_text(rebuild_index(root), encoding="utf-8")
         _git(root, "add", "--", "index.md")
-        # index.md를 제외하고 남은 미해결 충돌 = 진짜 페이지 충돌 → 사람이 해결해야 한다.
+        # index.md를 제외하고 남은 미해결 충돌 = 진짜 페이지 충돌.
         unmerged = _git(root, "diff", "--name-only", "--diff-filter=U").split()
         if unmerged:
-            _git(root, "checkout", "-f", "main")  # squash 병합은 MERGE_HEAD가 없어 abort 불가 — 트리 되돌림
-            _git(root, "clean", "-fd")
-            raise RuntimeError(f"위키 병합 충돌(수동 해결 필요): {unmerged}")
+            if resolve_conflict is None:
+                _restore_main(root)
+                raise RuntimeError(f"위키 병합 충돌(수동 해결 필요): {unmerged}")
+            try:
+                for path in unmerged:
+                    merged = resolve_conflict(
+                        path, _show_stage(root, 1, path),
+                        _show_stage(root, 2, path), _show_stage(root, 3, path),
+                    )
+                    (root / path).write_text(merged, encoding="utf-8")
+                    _git(root, "add", "--", path)
+            except Exception:
+                _restore_main(root)  # 해소 실패 시 트리 오염 방지 — approve()가 재시도 가능
+                raise
+            # 루프가 모든 unmerged path를 write+add → 충돌 스테이지가 남을 수 없어 재확인 불필요
         if resolutions:
             log_path = root / "contradictions" / "log.md"
             log = log_path.read_text(encoding="utf-8")

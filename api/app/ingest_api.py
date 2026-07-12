@@ -83,10 +83,13 @@ def approve(task_id: str, body: ApproveBody | None = None):
             db.drop_staged_rows(task["source_id"], body.exclude)
         counts = db.upsert_staged(task["source_id"])
         if task["branch_name"]:
+            from pipeline.narrative import resolve_page_conflict
+
             resolutions = body.contradiction_resolutions if body else {}
             wiki_ops.approve_branch(
                 _wiki_root(), task["source_id"],
                 f"approve: {task['source_id']}", resolutions=resolutions or None,
+                resolve_conflict=resolve_page_conflict,
             )
         pages = [p["path"] for p in (task["affected_pages"] or [])
                  if p.get("action") in ("create", "update")]
