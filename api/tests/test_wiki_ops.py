@@ -145,6 +145,42 @@ def test_approve_stale_branch_after_main_advanced(tmp_path):
     assert "ingest/sB" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
 
 
+def test_approve_same_page_conflict_auto_resolved(tmp_path):
+    """두 문서가 같은 페이지를 각각 갱신 → 순차 승인 시 진짜 병합 충돌.
+    resolve_conflict 콜백이 두 판을 합쳐 500 없이 해소하고, 양쪽 기여가 보존돼야 한다."""
+    init_wiki(tmp_path)
+    # A·B 모두 빈 main 기준으로 tech/shared.md를 각각 다르게 작성 (공통 조상 = 없음)
+    wiki_ops.stage_changes(tmp_path, "sA", {"tech/shared.md": "# 공유\nA의 내용"}, "ingest: A")
+    wiki_ops.stage_changes(tmp_path, "sB", {"tech/shared.md": "# 공유\nB의 내용"}, "ingest: B")
+    wiki_ops.approve_branch(tmp_path, "sA", "approve: A")  # A 먼저 → main에 A판
+
+    calls = []
+
+    def _resolver(path, base, ours, theirs):
+        calls.append(path)
+        return f"# 공유\n{ours.split(chr(10),1)[1]}\n{theirs.split(chr(10),1)[1]}"  # 두 판 합침
+
+    wiki_ops.approve_branch(tmp_path, "sB", "approve: B", resolve_conflict=_resolver)
+    merged = (tmp_path / "tech" / "shared.md").read_text(encoding="utf-8")
+    assert calls == ["tech/shared.md"]          # 충돌 페이지에 대해 콜백 호출됨
+    assert "A의 내용" in merged and "B의 내용" in merged  # 양쪽 보존
+    assert "<<<<<<<" not in merged              # 충돌 마커 잔존 금지
+    assert "ingest/sB" not in _git_out(tmp_path, "branch", "--list", "ingest/*")
+    assert "approve: B" in _git_out(tmp_path, "log", "--oneline", "main")
+
+
+def test_approve_conflict_without_resolver_still_raises(tmp_path):
+    """콜백 미제공 시 종전 동작 유지 — 사람 해결 요구하며 예외, 트리는 깨끗한 main."""
+    init_wiki(tmp_path)
+    wiki_ops.stage_changes(tmp_path, "sA", {"tech/s.md": "A"}, "ingest: A")
+    wiki_ops.stage_changes(tmp_path, "sB", {"tech/s.md": "B"}, "ingest: B")
+    wiki_ops.approve_branch(tmp_path, "sA", "approve: A")
+    with pytest.raises(RuntimeError, match="병합 충돌"):
+        wiki_ops.approve_branch(tmp_path, "sB", "approve: B")
+    assert _git_out(tmp_path, "status", "--porcelain") == ""  # 트리 오염 없음
+    assert _git_out(tmp_path, "branch", "--show-current").strip() == "main"
+
+
 def test_read_page_asof(tmp_path):
     init_wiki(tmp_path)
     rel = "tech/asof.md"

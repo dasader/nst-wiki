@@ -96,6 +96,40 @@ MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 이 페이지에 관련된 내용만 반영하고, content에 페이지 전문을 반환하라."""
 
 
+RESOLVE_SCHEMA = {
+    "type": "object",
+    "properties": {"content": {"type": "string"}},
+    "required": ["content"],
+}
+
+RESOLVE_PROMPT = """같은 위키 페이지가 두 문서에서 각각 갱신되어 병합 충돌이 났다. 두 판을 하나로 합쳐라.
+
+규칙:
+- 양쪽 판의 정보를 빠짐없이 보존한다. 한쪽 서술을 통째로 버리지 않는다
+- 중복되는 내용은 한 번만 쓰고, 상충하는 값이면 둘 다 남기되 어느 판의 것인지 문맥에서 드러나게 한다
+- 두 판에 이미 있는 [[링크]]·[[data:...]] 참조 형식과 YAML 프론트매터를 유지한다 (새 링크·테이블을 지어내지 말 것)
+- content에 마크다운 페이지 전문을 반환한다
+
+페이지 경로: {path}
+
+[공통 조상 — 두 문서 반영 전 원본 (신규 페이지면 빈 값)]
+{base}
+
+[판 1]
+{ours}
+
+[판 2]
+{theirs}"""
+
+
+def resolve_page_conflict(path: str, base: str, ours: str, theirs: str) -> str:
+    """충돌한 위키 페이지의 두 판을 LLM으로 하나로 합친다 (승인 시 병합 충돌 자동 해소용)."""
+    merged = llm.generate("resolve_conflict", RESOLVE_PROMPT.format(
+        path=path, base=base or "(없음)", ours=ours, theirs=theirs,
+    ), schema=RESOLVE_SCHEMA)
+    return str(merged["content"])
+
+
 SUMMARY_PROMPT = """다음 정책문서를 위키 요약 페이지용으로 요약하라.
 
 규칙:
