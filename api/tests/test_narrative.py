@@ -42,6 +42,24 @@ def test_compile_narrative_builds_files(tmp_path, monkeypatch):
     assert out["contradictions"] == []
 
 
+def test_compile_narrative_inlines_unmapped_tables(tmp_path, monkeypatch):
+    """티어 3: 매핑 실패 표 마크다운이 요약 페이지 부록으로 인라인된다."""
+    init_wiki(tmp_path)
+    monkeypatch.setattr(narrative.llm, "generate", _fake_llm(
+        plan_pages=[{"path": "tech/hbm-semiconductor.md", "action": "create", "title": "HBM"}],
+        merged={"content": "본문", "contradictions": []},
+    ))
+    tables = ["**비교표**\n\n| 항목 | 값 |\n| --- | --- |\n| A | 1 |"]
+    out = narrative.compile_narrative(tmp_path, "src1", {"title": "정책문서"},
+                                      ["서사"], inline_tables=tables)
+    summary = out["files"]["summaries/src1.md"]
+    assert "## 부록: 미분류 표" in summary
+    assert "| 항목 | 값 |" in summary and "비교표" in summary
+    # inline_tables 없으면 부록 섹션도 없다
+    out2 = narrative.compile_narrative(tmp_path, "src2", {"title": "정책문서"}, ["서사"])
+    assert "부록: 미분류 표" not in out2["files"]["summaries/src2.md"]
+
+
 def test_compile_narrative_records_contradictions(tmp_path, monkeypatch):
     init_wiki(tmp_path)
     monkeypatch.setattr(narrative.llm, "generate", _fake_llm(

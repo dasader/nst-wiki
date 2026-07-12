@@ -311,3 +311,64 @@ def test_reset_force_bypasses_in_flight_guard(tmp_path, monkeypatch):
     assert r.status_code == 200 and r.json()["sources_removed"] == 1
     assert called == {"db": True, "wiki": True}
     assert not (tmp_path / "sources" / "s1").exists()   # 업로드 원본 삭제
+
+
+def test_promote_metrics_from_needs_review(monkeypatch):
+    """검토 대기 표를 metrics로 승격: melt→staging.metrics 적재 + 원행 mapped 처리."""
+    from app import db
+    sid, tid = str(_uuid.uuid4()), str(_uuid.uuid4())
+    db.create_task(tid, sid)
+    db.set_status(tid, "staged")
+    payload = {"table_title": "연도별 예산", "columns": ["사업", "2024", "2025"],
+               "rows": [["AI", "100", "150"]]}
+    with db.connect() as conn:
+        r = conn.execute(
+            "INSERT INTO staging_tables (source_id, table_title, raw_data, mapping_confidence) "
+            "VALUES (%s, %s, %s, %s) RETURNING id",
+            (sid, "연도별 예산", __import__("json").dumps(payload, ensure_ascii=False), 0.2),
+        ).fetchone()
+    staging_id = r["id"]
+    try:
+        res = client.post(f"/api/v1/ingest/{tid}/promote-metrics",
+                          headers={"X-Admin-Key": "testkey"},
+                          json={"staging_id": staging_id, "entity_col": "사업",
+                                "metric_name": "예산", "unit": "백만원"})
+        assert res.status_code == 200 and res.json() == {"promoted": 2}
+        with db.connect() as conn:
+            mrows = conn.execute("SELECT year, value FROM staging.metrics WHERE source_id=%s ORDER BY year",
+                                 (sid,)).fetchall()
+            st = conn.execute("SELECT status FROM staging_tables WHERE id=%s", (staging_id,)).fetchone()
+        assert [(m["year"], float(m["value"])) for m in mrows] == [(2024, 100.0), (2025, 150.0)]
+        assert st["status"] == "mapped"
+        # 승격 후 검토 목록에서 사라진다
+        assert db.list_staged(sid)["needs_review"] == []
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM staging.metrics WHERE source_id=%s", (sid,))
+            conn.execute("DELETE FROM staging_tables WHERE source_id=%s", (sid,))
+        db.delete_task(tid)
+
+
+def test_promote_metrics_rejects_non_year_table(monkeypatch):
+    """연도 컬럼 없는 표는 400 — 데이터 오적재 방지."""
+    from app import db
+    sid, tid = str(_uuid.uuid4()), str(_uuid.uuid4())
+    db.create_task(tid, sid)
+    db.set_status(tid, "staged")
+    payload = {"table_title": "비교표", "columns": ["항목", "값"], "rows": [["A", "1"]]}
+    with db.connect() as conn:
+        r = conn.execute(
+            "INSERT INTO staging_tables (source_id, table_title, raw_data, mapping_confidence) "
+            "VALUES (%s, %s, %s, %s) RETURNING id",
+            (sid, "비교표", __import__("json").dumps(payload, ensure_ascii=False), 0.2),
+        ).fetchone()
+    try:
+        res = client.post(f"/api/v1/ingest/{tid}/promote-metrics",
+                          headers={"X-Admin-Key": "testkey"},
+                          json={"staging_id": r["id"], "entity_col": "항목",
+                                "metric_name": "값", "unit": ""})
+        assert res.status_code == 400
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM staging_tables WHERE source_id=%s", (sid,))
+        db.delete_task(tid)

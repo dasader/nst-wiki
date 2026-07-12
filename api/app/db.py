@@ -87,7 +87,7 @@ def save_results(task_id: str, results: dict) -> None:
         )
 
 
-STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries", "budget_history"]
+STAGED_TABLES = ["technologies", "projects", "policy_events", "ministries", "budget_history", "metrics"]
 
 _UPSERT_SQL = {
     "technologies": """
@@ -156,6 +156,13 @@ _UPSERT_SQL = {
         FROM staging.budget_history
         WHERE source_id = %s AND fiscal_year IS NOT NULL AND amount IS NOT NULL
     """,
+    # 티어 2 지표: 자연키 없이 단순 INSERT (budget_history와 동일 관례).
+    # 동일 소스 재승인은 상태 가드(409)가 막고, 교차 소스 중복은 (entity,metric,year) 다르면 발생 안 함
+    "metrics": """
+        INSERT INTO metrics (entity, metric_name, year, value, unit, source_id)
+        SELECT entity, metric_name, year, value, unit, source_id
+        FROM staging.metrics WHERE source_id = %s
+    """,
 }
 
 
@@ -168,9 +175,39 @@ def list_staged(source_id: str) -> dict:
             ).fetchall()
         out["needs_review"] = conn.execute(
             "SELECT id, table_title, raw_data, suggested_mapping, mapping_confidence, status "
-            "FROM staging_tables WHERE source_id = %s", (source_id,)
+            "FROM staging_tables WHERE source_id = %s AND status = 'needs_review'", (source_id,)
         ).fetchall()
     return out
+
+
+def get_staging_table(staging_id: int, source_id: str) -> dict | None:
+    """검토 대기 표 원본 로드 (source_id 일치 확인 — 타 소스 행 승격 차단)."""
+    with connect() as conn:
+        return conn.execute(
+            "SELECT raw_data FROM staging_tables WHERE id = %s AND source_id = %s "
+            "AND status = 'needs_review'", (staging_id, source_id),
+        ).fetchone()
+
+
+# melt된 지표 행 → staging.metrics 적재 SQL. 자동 매핑·수동 승격이 공유(컬럼 단일 출처).
+_STAGE_METRICS_SQL = ("INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
+                      "VALUES (%s, %s, %s, %s, %s, %s)")
+
+
+def stage_metrics_rows(source_id: str, rows: list[tuple]) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재 (적재 건수 반환)."""
+    with connect() as conn:
+        conn.cursor().executemany(_STAGE_METRICS_SQL, [list(r) + [source_id] for r in rows])
+    return len(rows)
+
+
+def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple]) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재하고 원 검토대기 행을 mapped로 처리 (한 트랜잭션).
+    staging.metrics에 넣으므로 소스 승인 시 다른 staging과 함께 canonical로 upsert된다."""
+    with connect() as conn:
+        conn.cursor().executemany(_STAGE_METRICS_SQL, [list(r) + [source_id] for r in rows])
+        conn.execute("UPDATE staging_tables SET status = 'mapped' WHERE id = %s", (staging_id,))
+    return len(rows)
 
 
 def upsert_staged(source_id: str) -> dict:
@@ -302,10 +339,10 @@ TERMINAL_STATUSES = ["staged", "approved", "rejected", "failed"]
 # 전체 초기화 대상 (이름은 리터럴 화이트리스트). ministries는 시드 행 보존 때문에 별도 처리.
 # FK 참조(tech_project_mapping·budget_history)가 있어 한 TRUNCATE 문에 함께 넣는다.
 _RESET_TABLES = [
-    "tech_project_mapping", "budget_history", "technologies", "projects",
+    "tech_project_mapping", "budget_history", "metrics", "technologies", "projects",
     "policy_events", "staging_tables", "ingest_tasks", "llm_usage",
     "staging.technologies", "staging.projects", "staging.tech_project_mapping",
-    "staging.budget_history", "staging.policy_events", "staging.ministries",
+    "staging.budget_history", "staging.metrics", "staging.policy_events", "staging.ministries",
 ]
 
 

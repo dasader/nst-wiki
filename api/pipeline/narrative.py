@@ -288,7 +288,7 @@ def apply_resolutions(path: str, content: str, decisions: list[dict]) -> str:
 
 
 def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
-                      narrative_texts: list[str]) -> dict:
+                      narrative_texts: list[str], inline_tables: list[str] | None = None) -> dict:
     today = date.today().isoformat()
     narrative = "\n\n".join(narrative_texts)
     existing_pages = wiki_ops.list_pages(wiki_root)
@@ -327,9 +327,14 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
             contradictions.append({**c, "page": page["path"]})
 
     title = meta.get("title", source_id)
+    body = _summarize(title, narrative)
+    if inline_tables:   # 티어 3: 고정 스키마에 안 맞은 표를 원형 그대로 보존 (질의 대상 아님)
+        body += ("\n\n## 부록: 미분류 표\n\n"
+                 "_아래 표는 고정 스키마에 매핑되지 않아 원형 그대로 보존합니다 "
+                 "(정형 질의 대상 아님)._\n\n" + "\n\n".join(inline_tables))
     files[f"summaries/{source_id}.md"] = (
         f"# {title}\n\n- source_id: {source_id}\n"
-        f"- ingest: {today}\n\n{_summarize(title, narrative)}\n"
+        f"- ingest: {today}\n\n{body}\n"
     )
     if contradictions:
         contra_log = wiki_ops.read_page(wiki_root, "contradictions/log.md") or ""

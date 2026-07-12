@@ -24,7 +24,7 @@ def test_compile_source_full_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
                         lambda p, s: {"staged": [], "needs_review": 0})
     monkeypatch.setattr(compile_mod.narrative, "compile_narrative",
-                        lambda root, sid, meta, texts: {
+                        lambda root, sid, meta, texts, inline=None: {
                             "files": {"tech/a.md": "본문"},
                             "affected_pages": [{"path": "tech/a.md", "action": "create"}],
                             "contradictions": [],
@@ -75,7 +75,7 @@ def test_compile_source_ignores_phantom_chunk_ids(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_mod.map_tables, "map_and_stage_tables",
                         lambda p, s: {"staged": [], "needs_review": 0})
     received = {}
-    def fake_narrative(root, sid, meta, texts):
+    def fake_narrative(root, sid, meta, texts, inline=None):
         received["texts"] = texts
         return {"files": {"tech/a.md": "본문"},
                 "affected_pages": [{"path": "tech/a.md", "action": "create"}],
