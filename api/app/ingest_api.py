@@ -29,6 +29,8 @@ class PromoteMetricsBody(BaseModel):
     entity_col: str
     metric_name: str
     unit: str = ""
+    value_col: str | None = None   # 무연도 경로: 값 컬럼 지정(있으면 flat melt)
+    year: int | None = None        # 무연도 경로 연도(발행연도 기본/NULL); 연도 경로는 무시
 
 
 def _wiki_root() -> Path:
@@ -162,12 +164,20 @@ def promote_metrics(task_id: str, body: PromoteMetricsBody):
     row = db.get_staging_table(body.staging_id, task["source_id"])
     if row is None:
         raise HTTPException(status_code=404, detail="검토 대기 표를 찾을 수 없음")
-    rows = map_tables.melt_metrics(row["raw_data"], {
-        "entity_col": body.entity_col, "metric_name": body.metric_name, "unit": body.unit})
+    if body.value_col:   # 무연도 경로: 값 컬럼+연도(발행연도/NULL) 지정. 재승격 허용(mapped 미표시)
+        rows = map_tables.melt_metrics_flat(
+            row["raw_data"], body.entity_col, body.value_col,
+            body.metric_name, body.unit, body.year)
+        detail = "대상·값 컬럼이 유효하지 않거나 값 컬럼에 숫자가 없습니다"
+        mark_mapped = False
+    else:                # 연도(wide) 경로: 연도 컬럼 자동 감지, 한 번에 완료
+        rows = map_tables.melt_metrics(row["raw_data"], {
+            "entity_col": body.entity_col, "metric_name": body.metric_name, "unit": body.unit})
+        detail = "연도 컬럼을 찾지 못했습니다 — 연도별(가로형) 수치 표만 승격됩니다"
+        mark_mapped = True
     if not rows:
-        raise HTTPException(status_code=400,
-                            detail="연도 컬럼을 찾지 못했습니다 — 연도별(가로형) 수치 표만 승격됩니다")
-    n = db.promote_staging_metrics(body.staging_id, task["source_id"], rows)
+        raise HTTPException(status_code=400, detail=detail)
+    n = db.promote_staging_metrics(body.staging_id, task["source_id"], rows, mark_mapped=mark_mapped)
     return {"promoted": n}
 
 

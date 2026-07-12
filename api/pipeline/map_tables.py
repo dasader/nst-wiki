@@ -259,6 +259,28 @@ def melt_metrics(payload: dict, out: dict) -> list[tuple]:
     return rows
 
 
+def melt_metrics_flat(payload: dict, entity_col: str, value_col: str,
+                      metric_name: str, unit: str, year) -> list[tuple]:
+    """무연도 표(대상 + 값 컬럼)를 (entity, metric_name, year, value, unit) 롱포맷으로.
+    연도 컬럼이 없어 값 컬럼과 year를 사람이 지정한다(year는 발행연도 기본/NULL). 수동 승격 전용.
+    부적합(대상=값 동일·컬럼 없음·지표명 없음)하면 [] — 호출부가 400."""
+    cols = payload["columns"]
+    metric = canon_metric(metric_name)
+    unit_norm = _clean_str(unit or "") or None
+    if entity_col not in cols or value_col not in cols or entity_col == value_col or not metric:
+        return []
+    ei, vi = cols.index(entity_col), cols.index(value_col)
+    rows = []
+    for row in payload["rows"]:
+        if ei >= len(row) or vi >= len(row):
+            continue
+        entity = _clean_str(str(row[ei]))
+        val = _num(row[vi])
+        if entity and val is not None:
+            rows.append((entity, metric, year, val, unit_norm))
+    return rows
+
+
 def _stage_metrics(payload: dict, out: dict, source_id: str, result: dict) -> None:
     rows = melt_metrics(payload, out) if out["confidence"] >= CONFIDENCE_THRESHOLD else []
     if not rows:

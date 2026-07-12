@@ -267,8 +267,8 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
           </p>
           <datalist id="metric-vocab">{METRIC_VOCAB.map((m) => <option key={m} value={m} />)}</datalist>
           {needsReview.map((row) => (
-            <NeedsReviewCard key={row.id} row={row} taskId={taskId}
-                             canPromote={canPromote} onDone={load} />
+            <NeedsReviewCard key={row.id} row={row} taskId={taskId} canPromote={canPromote}
+                             publishYear={(r.publish_date || "").slice(0, 4)} onDone={load} />
           ))}
         </>
       )}
@@ -291,30 +291,42 @@ const METRIC_VOCAB = ["예산", "인력", "목표", "실적", "건수", "비중"
 const hasYear = (h) => (String(h).match(/\d{4}|\d{2}/g) || [])
   .some((t) => { const y = +t < 100 ? +t + 2000 : +t; return y >= 1990 && y <= 2100; });
 
-// 검토 대기 표를 실제 표로 보여주고, 연도별 수치 표면 metrics로 승격하는 폼.
-function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
+// 검토 대기 표를 실제 표로 보여주고 metrics로 승격하는 폼.
+// 연도 컬럼이 있으면 wide melt(연도별), 없으면 flat melt(값 컬럼 1개 + 연도=발행연도/NULL).
+function NeedsReviewCard({ row, taskId, canPromote, publishYear, onDone }) {
   const rd = row.raw_data || {};
   const cols = rd.columns || [];
-  const yearCols = cols.filter(hasYear);          // melt 대상 = 연도 컬럼(값으로 펴짐)
-  const entityCols = cols.filter((c) => !hasYear(c)); // 대상 후보 = 연도 아닌 컬럼
+  const yearCols = cols.filter(hasYear);              // 있으면 연도(wide) 경로
+  const isWide = yearCols.length > 0;
+  const entityCols = isWide ? cols.filter((c) => !hasYear(c)) : cols; // 대상 후보
+
   const [entityCol, setEntityCol] = useState(entityCols[0] || "");
+  const [valueCol, setValueCol] = useState(cols.find((c) => c !== entityCols[0]) || "");
   const [metric, setMetric] = useState("");
   const [unit, setUnit] = useState("");
+  const [year, setYear] = useState(publishYear || "");   // flat 경로: 발행연도 기본, 비우면 NULL
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   async function promote() {
     setBusy(true); setMsg(null);
     try {
+      const payload = { staging_id: row.id, entity_col: entityCol, metric_name: metric, unit };
+      if (!isWide) {   // 무연도: 값 컬럼 + 연도(빈칸이면 NULL)
+        payload.value_col = valueCol;
+        payload.year = year.trim() ? parseInt(year, 10) : null;
+      }
       const res = await adminFetch(`/api/v1/ingest/${taskId}/promote-metrics`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staging_id: row.id, entity_col: entityCol, metric_name: metric, unit }),
+        body: JSON.stringify(payload),
       });
       const b = await res.json().catch(() => ({}));
       if (res.ok) onDone();
       else setMsg(b.detail || `실패 (${res.status})`);
     } finally { setBusy(false); }
   }
+
+  const canSubmit = !busy && entityCol && metric.trim() && (isWide || (valueCol && valueCol !== entityCol));
 
   return (
     <div className="card" style={{ marginBottom: 12 }}>
@@ -329,12 +341,9 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
           </tbody>
         </table>
       </div></div>
-      {canPromote && (yearCols.length === 0 || entityCols.length === 0 ? (
+      {canPromote && (cols.length < 2 ? (
         <p className="muted" style={{ fontSize: "0.8rem", marginTop: 10 }}>
-          {yearCols.length === 0
-            ? "연도 컬럼(2024·’25 등)이 없어 metrics로 승격할 수 없습니다 — 연도별(가로형) 수치 표만 지원합니다."
-            : "대상 컬럼(연도가 아닌 컬럼)이 없어 승격할 수 없습니다."}
-          {" "}이 표는 위키 요약 페이지에 원형 그대로 보존됩니다.
+          컬럼이 부족해 metrics로 승격할 수 없습니다. 이 표는 위키 요약 페이지에 원형 보존됩니다.
         </p>
       ) : (
         <div className="row" style={{ gap: 10, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -343,6 +352,13 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
               {entityCols.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
+          {!isWide && (
+            <label style={{ fontSize: "0.8rem" }}>값 컬럼<br />
+              <select value={valueCol} onChange={(e) => setValueCol(e.target.value)}>
+                {cols.filter((c) => c !== entityCol).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          )}
           <label style={{ fontSize: "0.8rem" }}>지표명<br />
             <input list="metric-vocab" value={metric} onChange={(e) => setMetric(e.target.value)}
                    placeholder="예: 예산" />
@@ -351,8 +367,17 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
             <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="백만원"
                    style={{ width: 90 }} />
           </label>
-          <button disabled={busy || !entityCol || !metric.trim()} onClick={promote}>metrics로 승격</button>
-          <span className="muted" style={{ fontSize: "0.75rem" }}>연도 {yearCols.join("·")} → 값으로 melt</span>
+          {!isWide && (
+            <label style={{ fontSize: "0.8rem" }}>연도<br />
+              <input value={year} onChange={(e) => setYear(e.target.value)} placeholder="비우면 없음"
+                     style={{ width: 90 }} />
+            </label>
+          )}
+          <button disabled={!canSubmit} onClick={promote}>metrics로 승격</button>
+          <span className="muted" style={{ fontSize: "0.75rem" }}>
+            {isWide ? `연도 ${yearCols.join("·")} → 값으로 melt`
+                    : "값 컬럼을 지표값으로 · 연도는 발행연도 기본(비우면 시점 없음)"}
+          </span>
           {msg && <span style={{ color: "var(--danger)", fontSize: "0.8rem" }}>{msg}</span>}
         </div>
       ))}

@@ -306,3 +306,36 @@ def test_unmapped_table_collected_for_inline(tmp_path, monkeypatch):
         assert "비교 매트릭스" in out["inline_md"][0] and "| 항목 | 값 |" in out["inline_md"][0]
     finally:
         _cleanup(source_id)
+
+
+# --- 무연도 flat melt + dedup ---
+
+def test_melt_metrics_flat():
+    p = {"columns": ["기술", "목표TRL"], "rows": [["AI", "8"], ["양자", "6"], ["빈", ""]]}
+    assert mt.melt_metrics_flat(p, "기술", "목표TRL", "목표", "", 2026) == [
+        ("AI", "목표", 2026, 8.0, None), ("양자", "목표", 2026, 6.0, None)]   # 빈값 스킵
+    assert mt.melt_metrics_flat(p, "기술", "목표TRL", "목표", "건", None) == [
+        ("AI", "목표", None, 8.0, "건"), ("양자", "목표", None, 6.0, "건")]     # year=NULL
+    assert mt.melt_metrics_flat(p, "기술", "기술", "목표", "", 2026) == []      # 대상=값 → []
+    assert mt.melt_metrics_flat(p, "없음", "목표TRL", "목표", "", 2026) == []    # 없는 컬럼 → []
+
+
+def test_metrics_upsert_dedups(monkeypatch):
+    """DISTINCT ON + ON CONFLICT: 같은 (source,entity,metric,year)는 한 행(마지막 값). NULL도 dedup."""
+    sid = str(uuid.uuid4())
+    db.stage_metrics_rows(sid, [("반도체", "예산", 2024, 100.0, "백만원"),
+                                ("반도체", "예산", 2024, 150.0, "백만원")])   # 2024 중복
+    db.stage_metrics_rows(sid, [("반도체", "예산", None, 50.0, None),
+                                ("반도체", "예산", None, 70.0, None)])          # NULL연도 중복
+    try:
+        db.upsert_staged(sid)   # staging → canonical (dedup)
+        with db.connect() as conn:
+            rows = conn.execute(
+                "SELECT year, value FROM metrics WHERE source_id=%s ORDER BY year NULLS LAST",
+                (sid,)).fetchall()
+        # 4 staging행 → 2 canonical행, 각 그룹 마지막(id DESC) 값
+        assert [(r["year"], float(r["value"])) for r in rows] == [(2024, 150.0), (None, 70.0)]
+    finally:
+        with db.connect() as conn:
+            conn.execute("DELETE FROM metrics WHERE source_id=%s", (sid,))
+            conn.execute("DELETE FROM staging.metrics WHERE source_id=%s", (sid,))
