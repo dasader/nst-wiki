@@ -286,11 +286,18 @@ function cellText(v) {
 // map_tables.METRIC_VOCAB 미러 (승격 폼 자동완성용 힌트일 뿐 — 자유 입력 허용)
 const METRIC_VOCAB = ["예산", "인력", "목표", "실적", "건수", "비중", "매출", "투자"];
 
+// map_tables._years 미러 — 헤더에 연도(4자리 1990~2100, 또는 '24 같은 2자리)가 있으면 true.
+// melt가 연도=컬럼 헤더인 와이드 표만 지원하므로, 승격 가능 여부를 프런트에서 먼저 판정한다.
+const hasYear = (h) => (String(h).match(/\d{4}|\d{2}/g) || [])
+  .some((t) => { const y = +t < 100 ? +t + 2000 : +t; return y >= 1990 && y <= 2100; });
+
 // 검토 대기 표를 실제 표로 보여주고, 연도별 수치 표면 metrics로 승격하는 폼.
 function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
   const rd = row.raw_data || {};
   const cols = rd.columns || [];
-  const [entityCol, setEntityCol] = useState(cols[0] || "");
+  const yearCols = cols.filter(hasYear);          // melt 대상 = 연도 컬럼(값으로 펴짐)
+  const entityCols = cols.filter((c) => !hasYear(c)); // 대상 후보 = 연도 아닌 컬럼
+  const [entityCol, setEntityCol] = useState(entityCols[0] || "");
   const [metric, setMetric] = useState("");
   const [unit, setUnit] = useState("");
   const [msg, setMsg] = useState(null);
@@ -322,11 +329,18 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
           </tbody>
         </table>
       </div></div>
-      {canPromote && (
+      {canPromote && (yearCols.length === 0 || entityCols.length === 0 ? (
+        <p className="muted" style={{ fontSize: "0.8rem", marginTop: 10 }}>
+          {yearCols.length === 0
+            ? "연도 컬럼(2024·’25 등)이 없어 metrics로 승격할 수 없습니다 — 연도별(가로형) 수치 표만 지원합니다."
+            : "대상 컬럼(연도가 아닌 컬럼)이 없어 승격할 수 없습니다."}
+          {" "}이 표는 위키 요약 페이지에 원형 그대로 보존됩니다.
+        </p>
+      ) : (
         <div className="row" style={{ gap: 10, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <label style={{ fontSize: "0.8rem" }}>대상 컬럼<br />
             <select value={entityCol} onChange={(e) => setEntityCol(e.target.value)}>
-              {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+              {entityCols.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
           <label style={{ fontSize: "0.8rem" }}>지표명<br />
@@ -338,9 +352,10 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
                    style={{ width: 90 }} />
           </label>
           <button disabled={busy || !entityCol || !metric.trim()} onClick={promote}>metrics로 승격</button>
+          <span className="muted" style={{ fontSize: "0.75rem" }}>연도 {yearCols.join("·")} → 값으로 melt</span>
           {msg && <span style={{ color: "var(--danger)", fontSize: "0.8rem" }}>{msg}</span>}
         </div>
-      )}
+      ))}
     </div>
   );
 }
