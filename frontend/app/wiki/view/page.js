@@ -7,7 +7,9 @@ import { pageSlug } from "../../labels";
 import { linkifyWiki } from "../../links";
 
 function splitFrontmatter(md) {
-  const m = md.match(/^---\n([\s\S]*?)\n---\n?/);
+  // LLM이 여는 구분자를 제멋대로 낸다: "---\n", "--- \n"(뒤 공백), "---title:"(개행 없이 붙음).
+  // 셋 다 관대하게 흡수 — 구분자 뒤 공백 허용 + 여는 쪽 개행은 선택.
+  const m = md.match(/^---[ \t]*\n?([\s\S]*?)\n---[ \t]*\n?/);
   return m ? { front: m[1], body: md.slice(m[0].length) } : { front: null, body: md };
 }
 
