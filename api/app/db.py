@@ -175,9 +175,31 @@ def list_staged(source_id: str) -> dict:
             ).fetchall()
         out["needs_review"] = conn.execute(
             "SELECT id, table_title, raw_data, suggested_mapping, mapping_confidence, status "
-            "FROM staging_tables WHERE source_id = %s", (source_id,)
+            "FROM staging_tables WHERE source_id = %s AND status = 'needs_review'", (source_id,)
         ).fetchall()
     return out
+
+
+def get_staging_table(staging_id: int, source_id: str) -> dict | None:
+    """검토 대기 표 원본 로드 (source_id 일치 확인 — 타 소스 행 승격 차단)."""
+    with connect() as conn:
+        return conn.execute(
+            "SELECT id, raw_data FROM staging_tables WHERE id = %s AND source_id = %s "
+            "AND status = 'needs_review'", (staging_id, source_id),
+        ).fetchone()
+
+
+def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple]) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재하고 원 검토대기 행을 mapped로 처리.
+    staging.metrics에 넣으므로 소스 승인 시 다른 staging과 함께 canonical로 upsert된다."""
+    params = [list(r) + [source_id] for r in rows]
+    with connect() as conn:
+        conn.cursor().executemany(
+            "INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s)", params,
+        )
+        conn.execute("UPDATE staging_tables SET status = 'mapped' WHERE id = %s", (staging_id,))
+    return len(params)
 
 
 def upsert_staged(source_id: str) -> dict:

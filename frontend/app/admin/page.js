@@ -261,7 +261,13 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
       {needsReview.length > 0 && (
         <>
           <h3 style={{ marginTop: 22 }}>스키마 검토 필요 ({needsReview.length}건)</h3>
-          <StagedTable rows={needsReview} />
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+            고정 스키마에 매핑되지 않은 표입니다. 연도별(가로형) 수치 표는 metrics로 승격할 수 있습니다.
+          </p>
+          {needsReview.map((row) => (
+            <NeedsReviewCard key={row.id} row={row} taskId={taskId}
+                             canPromote={r.status === "staged"} onDone={load} />
+          ))}
         </>
       )}
 
@@ -273,6 +279,69 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
 
 function cellText(v) {
   return v !== null && typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
+}
+
+// map_tables.METRIC_VOCAB 미러 (승격 폼 자동완성용 힌트일 뿐 — 자유 입력 허용)
+const METRIC_VOCAB = ["예산", "인력", "목표", "실적", "건수", "비중", "매출", "투자"];
+
+// 검토 대기 표를 실제 표로 보여주고, 연도별 수치 표면 metrics로 승격하는 폼.
+function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
+  const rd = row.raw_data || {};
+  const cols = rd.columns || [];
+  const [entityCol, setEntityCol] = useState(cols[0] || "");
+  const [metric, setMetric] = useState("");
+  const [unit, setUnit] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function promote() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await adminFetch(`/api/v1/ingest/${taskId}/promote-metrics`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staging_id: row.id, entity_col: entityCol, metric_name: metric, unit }),
+      });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok) onDone();
+      else setMsg(b.detail || `실패 (${res.status})`);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <b>{row.table_title || "(제목 없음)"}</b>
+      <div className="table-wrap"><div className="table-scroll">
+        <table>
+          <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>
+            {(rd.rows || []).slice(0, 20).map((r, i) => (
+              <tr key={i}>{cols.map((_, j) => <td key={j}>{cellText(r[j])}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div></div>
+      {canPromote && (
+        <div className="row" style={{ gap: 10, marginTop: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <label style={{ fontSize: "0.8rem" }}>대상 컬럼<br />
+            <select value={entityCol} onChange={(e) => setEntityCol(e.target.value)}>
+              {cols.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: "0.8rem" }}>지표명<br />
+            <input list="metric-vocab" value={metric} onChange={(e) => setMetric(e.target.value)}
+                   placeholder="예: 예산" />
+          </label>
+          <datalist id="metric-vocab">{METRIC_VOCAB.map((m) => <option key={m} value={m} />)}</datalist>
+          <label style={{ fontSize: "0.8rem" }}>단위<br />
+            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="백만원"
+                   style={{ width: 90 }} />
+          </label>
+          <button disabled={busy || !entityCol || !metric.trim()} onClick={promote}>metrics로 승격</button>
+          {msg && <span style={{ color: "var(--danger)", fontSize: "0.8rem" }}>{msg}</span>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // 핵심 staging 표(id 컬럼 보유)만 행 제외 체크박스를 붙인다.

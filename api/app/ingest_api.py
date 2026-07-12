@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app import db
 from app.auth import require_admin
+from pipeline import map_tables
 import wiki_ops
 
 router = APIRouter(prefix="/api/v1")
@@ -21,6 +22,13 @@ ALLOWED_EXTS = {".pdf", ".md", ".xlsx"}
 class ApproveBody(BaseModel):
     contradiction_resolutions: dict[str, str] = {}
     exclude: dict[str, list[int]] = {}  # {staging 테이블명: 승인 제외할 행 id 목록}
+
+
+class PromoteMetricsBody(BaseModel):
+    staging_id: int
+    entity_col: str
+    metric_name: str
+    unit: str = ""
 
 
 def _wiki_root() -> Path:
@@ -140,6 +148,27 @@ def reject(task_id: str):
         db.set_status(task_id, "staged")
         raise
     return {"status": "rejected"}
+
+
+@router.post("/ingest/{task_id}/promote-metrics", dependencies=[Depends(require_admin)])
+def promote_metrics(task_id: str, body: PromoteMetricsBody):
+    """검토 대기 표를 사람이 지정한 (대상·지표·단위)로 melt해 staging.metrics에 승격한다.
+    승인 원자성 유지를 위해 소스가 아직 staged일 때만 허용 — 승인 시 함께 upsert된다."""
+    task = db.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task["status"] != "staged":
+        raise HTTPException(status_code=409, detail=f"승격은 검토 대기(staged) 상태에서만 가능 (현재: {task['status']})")
+    row = db.get_staging_table(body.staging_id, task["source_id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="검토 대기 표를 찾을 수 없음")
+    rows = map_tables._melt_metrics(row["raw_data"], {
+        "entity_col": body.entity_col, "metric_name": body.metric_name, "unit": body.unit})
+    if not rows:
+        raise HTTPException(status_code=400,
+                            detail="연도 컬럼을 찾지 못했습니다 — 연도별(가로형) 수치 표만 승격됩니다")
+    n = db.promote_staging_metrics(body.staging_id, task["source_id"], rows)
+    return {"promoted": n}
 
 
 def _sources_root() -> Path:
