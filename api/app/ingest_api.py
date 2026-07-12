@@ -162,7 +162,7 @@ def promote_metrics(task_id: str, body: PromoteMetricsBody):
     row = db.get_staging_table(body.staging_id, task["source_id"])
     if row is None:
         raise HTTPException(status_code=404, detail="검토 대기 표를 찾을 수 없음")
-    rows = map_tables._melt_metrics(row["raw_data"], {
+    rows = map_tables.melt_metrics(row["raw_data"], {
         "entity_col": body.entity_col, "metric_name": body.metric_name, "unit": body.unit})
     if not rows:
         raise HTTPException(status_code=400,

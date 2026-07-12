@@ -228,7 +228,7 @@ def test_melt_metrics_wide_table():
                "rows": [["AI반도체", "100", "150", "200"], ["양자", "50", "", "80"]]}
     out = {"table": "metrics", "confidence": 0.9, "entity_col": "사업명",
            "metric_name": "예산", "unit": "백만원"}
-    rows = mt._melt_metrics(payload, out)
+    rows = mt.melt_metrics(payload, out)
     # AI반도체 3개(2024/25/26) + 양자 2개(2025 빈칸 제외) = 5
     assert rows == [
         ("AI반도체", "예산", 2024, 100.0, "백만원"),
@@ -244,7 +244,7 @@ def test_melt_metrics_rejects_when_no_year_columns():
     payload = {"columns": ["사업명", "금액"], "rows": [["AI", "100"]]}
     out = {"table": "metrics", "confidence": 0.9, "entity_col": "사업명",
            "metric_name": "예산", "unit": "백만원"}
-    assert mt._melt_metrics(payload, out) == []
+    assert mt.melt_metrics(payload, out) == []
 
 
 def test_canon_metric_and_num():

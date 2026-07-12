@@ -184,6 +184,7 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
   const staged = r.staged || {};
   const stagedTables = Object.entries(staged).filter(([k, v]) => k !== "needs_review" && v.length);
   const needsReview = staged.needs_review || [];
+  const canPromote = r.status === "staged";   // 검토 대기 승격은 승인 전에만
 
   return (
     <div>
@@ -264,9 +265,10 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
           <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
             고정 스키마에 매핑되지 않은 표입니다. 연도별(가로형) 수치 표는 metrics로 승격할 수 있습니다.
           </p>
+          <datalist id="metric-vocab">{METRIC_VOCAB.map((m) => <option key={m} value={m} />)}</datalist>
           {needsReview.map((row) => (
             <NeedsReviewCard key={row.id} row={row} taskId={taskId}
-                             canPromote={r.status === "staged"} onDone={load} />
+                             canPromote={canPromote} onDone={load} />
           ))}
         </>
       )}
@@ -331,7 +333,6 @@ function NeedsReviewCard({ row, taskId, canPromote, onDone }) {
             <input list="metric-vocab" value={metric} onChange={(e) => setMetric(e.target.value)}
                    placeholder="예: 예산" />
           </label>
-          <datalist id="metric-vocab">{METRIC_VOCAB.map((m) => <option key={m} value={m} />)}</datalist>
           <label style={{ fontSize: "0.8rem" }}>단위<br />
             <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="백만원"
                    style={{ width: 90 }} />

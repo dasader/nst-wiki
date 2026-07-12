@@ -184,22 +184,30 @@ def get_staging_table(staging_id: int, source_id: str) -> dict | None:
     """검토 대기 표 원본 로드 (source_id 일치 확인 — 타 소스 행 승격 차단)."""
     with connect() as conn:
         return conn.execute(
-            "SELECT id, raw_data FROM staging_tables WHERE id = %s AND source_id = %s "
+            "SELECT raw_data FROM staging_tables WHERE id = %s AND source_id = %s "
             "AND status = 'needs_review'", (staging_id, source_id),
         ).fetchone()
 
 
-def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple]) -> int:
-    """melt된 지표 행들을 staging.metrics에 적재하고 원 검토대기 행을 mapped로 처리.
-    staging.metrics에 넣으므로 소스 승인 시 다른 staging과 함께 canonical로 upsert된다."""
-    params = [list(r) + [source_id] for r in rows]
+# melt된 지표 행 → staging.metrics 적재 SQL. 자동 매핑·수동 승격이 공유(컬럼 단일 출처).
+_STAGE_METRICS_SQL = ("INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
+                      "VALUES (%s, %s, %s, %s, %s, %s)")
+
+
+def stage_metrics_rows(source_id: str, rows: list[tuple]) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재 (적재 건수 반환)."""
     with connect() as conn:
-        conn.cursor().executemany(
-            "INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s)", params,
-        )
+        conn.cursor().executemany(_STAGE_METRICS_SQL, [list(r) + [source_id] for r in rows])
+    return len(rows)
+
+
+def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple]) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재하고 원 검토대기 행을 mapped로 처리 (한 트랜잭션).
+    staging.metrics에 넣으므로 소스 승인 시 다른 staging과 함께 canonical로 upsert된다."""
+    with connect() as conn:
+        conn.cursor().executemany(_STAGE_METRICS_SQL, [list(r) + [source_id] for r in rows])
         conn.execute("UPDATE staging_tables SET status = 'mapped' WHERE id = %s", (staging_id,))
-    return len(params)
+    return len(rows)
 
 
 def upsert_staged(source_id: str) -> dict:

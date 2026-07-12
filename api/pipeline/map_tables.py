@@ -84,7 +84,7 @@ def _num(val):
     """지표 값 → float. value 컬럼이 NUMERIC이라 소수·퍼센트를 보존(amount의 int 절삭과 다름)."""
     try:
         return float(str(val).replace(",", "").replace("%", "").strip())
-    except (ValueError, AttributeError):
+    except ValueError:
         return None
 
 
@@ -229,16 +229,17 @@ def _stash_for_review(payload: dict, suggestion: dict, confidence: float,
         result["inline_md"].append(md)
 
 
-def _melt_metrics(payload: dict, out: dict) -> list[tuple]:
+def melt_metrics(payload: dict, out: dict) -> list[tuple]:
     """와이드 표(대상 + 연도 컬럼들)를 (entity, metric_name, year, value, unit) 롱포맷으로 melt.
     부적합(대상 컬럼 없음·연도 컬럼 없음·지표명 없음)하면 [] — 호출부가 검토 대기로 넘긴다.
+    자동 매핑(_stage_metrics)과 수동 승격(ingest_api) 두 곳에서 쓰는 공개 API.
     ponytail: 연도가 컬럼 헤더인 와이드 표만 지원. 이미 롱포맷인 표는 []→검토 대기(티어 3).
     반복되면 롱포맷 감지 추가."""
     cols = payload["columns"]
     entity_col = out.get("entity_col")
     metric = canon_metric(out.get("metric_name", ""))
     unit = _clean_str(out.get("unit") or "") or None
-    year_cols = [(i, _years(c)[0]) for i, c in enumerate(cols) if _years(c)]
+    year_cols = [(i, y[0]) for i, c in enumerate(cols) if (y := _years(c))]
     if entity_col not in cols or not year_cols or not metric:
         return []
     ei = cols.index(entity_col)
@@ -259,17 +260,11 @@ def _melt_metrics(payload: dict, out: dict) -> list[tuple]:
 
 
 def _stage_metrics(payload: dict, out: dict, source_id: str, result: dict) -> None:
-    rows = _melt_metrics(payload, out) if out["confidence"] >= CONFIDENCE_THRESHOLD else []
+    rows = melt_metrics(payload, out) if out["confidence"] >= CONFIDENCE_THRESHOLD else []
     if not rows:
         _stash_for_review(payload, out, out["confidence"], source_id, result)
         return
-    params = [list(r) + [source_id] for r in rows]
-    with db.connect() as conn:
-        conn.cursor().executemany(
-            "INSERT INTO staging.metrics (entity, metric_name, year, value, unit, source_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s)", params,
-        )
-    result["staged"].append({"table": "metrics", "rows": len(params)})
+    result["staged"].append({"table": "metrics", "rows": db.stage_metrics_rows(source_id, rows)})
 
 
 def _stage_one(payload: dict, out: dict, source_id: str, result: dict) -> None:
