@@ -33,9 +33,20 @@ def test_ingest_rejects_unsupported_ext(tmp_path, monkeypatch):
         "/api/v1/ingest",
         headers={"X-Admin-Key": "testkey"},
         files={"file": ("doc.hwp", b"x")},
-        data={"title": "테스트"},
+        data={"title": "테스트", "publish_date": "2026"},
     )
     assert r.status_code == 400
+
+
+def test_ingest_requires_publish_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
+    r = client.post(
+        "/api/v1/ingest",
+        headers={"X-Admin-Key": "testkey"},
+        files={"file": ("doc.md", b"x")},
+        data={"title": "테스트"},  # publish_date 누락
+    )
+    assert r.status_code == 422  # Form(...) 필수 — 필드 자체 누락
 
 
 def test_status_unknown_task_404():
@@ -52,7 +63,7 @@ def test_ingest_happy_path_md(tmp_path, monkeypatch):
         "/api/v1/ingest",
         headers={"X-Admin-Key": "testkey"},
         files={"file": ("doc.md", "# 제목\n본문".encode())},
-        data={"title": "행복 경로", "tags": "NEXT, 반도체"},
+        data={"title": "행복 경로", "tags": "NEXT, 반도체", "publish_date": "2026"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -63,6 +74,7 @@ def test_ingest_happy_path_md(tmp_path, monkeypatch):
     assert len(src_dirs) == 1
     meta = _json.loads((src_dirs[0] / "metadata.json").read_text(encoding="utf-8"))
     assert meta["title"] == "행복 경로"
+    assert meta["publish_date"] == "2026"
     assert meta["tags"] == ["NEXT", "반도체"]
     assert meta["file_hash"].startswith("sha256:")
     from app import db
@@ -119,6 +131,44 @@ def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
         # reject도 409 (approved 상태)
         r = client.post(f"/api/v1/ingest/{task_id}/reject", headers={"X-Admin-Key": "testkey"})
         assert r.status_code == 409
+    finally:
+        real_db.delete_task(task_id)
+
+
+def test_approve_applies_contradiction_resolution_to_page(tmp_path, monkeypatch):
+    """승인 시 모순 결정이 실제 페이지 본문에 반영된다 (log 도장뿐 아니라 write_page 호출)."""
+    from app import ingest_api
+    import pipeline.narrative as narrative
+    import tasks as tasks_mod
+    from app import db as real_db
+
+    monkeypatch.setattr(ingest_api.wiki_ops, "approve_branch",
+                        lambda r, s, m, resolutions=None: None)
+    monkeypatch.setattr(ingest_api.db, "upsert_staged", lambda s: {})
+    monkeypatch.setattr(ingest_api.wiki_ops, "read_page", lambda root, p: "기존 본문")
+    monkeypatch.setattr(narrative, "apply_resolutions",
+                        lambda path, content, decisions: f"반영됨:{decisions[0]['action']}")
+    writes = []
+    monkeypatch.setattr(ingest_api.wiki_ops, "write_page",
+                        lambda root, p, content, msg: writes.append((p, content)))
+    monkeypatch.setattr(tasks_mod.embed_pages, "delay", lambda paths: None)
+
+    task_id, source_id = str(_uuid.uuid4()), str(_uuid.uuid4())
+    real_db.create_task(task_id, source_id)
+    try:
+        with real_db.connect() as conn:
+            conn.execute(
+                "UPDATE ingest_tasks SET status='staged', branch_name=%s, contradictions=%s "
+                "WHERE task_id=%s",
+                (f"ingest/{source_id}",
+                 '[{"page": "tech/a.md", "summary": "s", "existing": "e", "new": "n"}]', task_id),
+            )
+        cid = f"{source_id[:8]}-1"  # frontend/backend 공통 규약
+        r = client.post(f"/api/v1/ingest/{task_id}/approve",
+                        headers={"X-Admin-Key": "testkey"},
+                        json={"contradiction_resolutions": {cid: "replace"}})
+        assert r.status_code == 200
+        assert writes == [("tech/a.md", "반영됨:replace")]  # 결정이 본문에 확정됨
     finally:
         real_db.delete_task(task_id)
 

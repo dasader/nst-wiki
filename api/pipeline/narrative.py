@@ -74,9 +74,11 @@ MERGE_SCHEMA = {
 
 MERGE_PROMPT = """위키 페이지를 갱신하라. 규칙:
 - 기존 내용을 보존하며 새 정보를 병합한다 (통째 재작성 금지)
-- 페이지는 YAML 프론트매터로 시작: title, type, related_pages, sources (source_id "{source_id}"와 last_updated "{today}"를 sources에 추가)
+- 페이지는 YAML 프론트매터로 시작: title, type, related_pages, sources (source_id "{source_id}", published "{publish_date}", last_updated "{today}"를 sources에 추가)
 - 내부 링크는 [[디렉토리/파일명]] 형식, 정형 수치는 본문 하드코딩 대신 [[data:테이블?조건]] 참조
-- 기존 서술과 새 정보가 충돌하면 본문을 임의로 교체하지 말고 contradictions에 기록하라
+- 이 문서의 발행 시점은 {publish_date}이다. 기존 서술이 더 최신(이후 연도) 출처의 값이면
+  그 최신값을 유지하고 이 문서 내용은 배경·연혁으로만 편입한다 (오래된 값으로 최신값을 덮지 말 것).
+  발행 연도가 같거나 어느 쪽이 최신인지 판단이 안 서면 본문을 교체하지 말고 contradictions에 기록하라
 
 내부 링크는 아래 목록의 페이지로만 걸 수 있다. 목록에 없으면 링크하지 말고 평문으로 써라
 (laws/·policy/ 같은 임의 디렉토리를 만들지 말 것):
@@ -239,6 +241,52 @@ def _inject_contradictions(content: str, items: list[dict]) -> str:
     return f"---\n{block}\n---\n\n{content}"  # 프론트매터 없으면 새로 생성
 
 
+APPLY_SCHEMA = {
+    "type": "object",
+    "properties": {"content": {"type": "string"}},
+    "required": ["content"],
+}
+
+APPLY_PROMPT = """위키 페이지의 모순 항목들을 사람이 내린 결정대로 본문에 확정 반영하라.
+
+결정(action): keep=기존값 유지, replace=신규값으로 교체, both=둘 다 남기되 문맥에서 구분.
+규칙:
+- 각 항목을 결정대로 본문 서술에 반영한다 (replace면 기존 서술을 신규값으로 바꾼다)
+- 프론트매터 unresolved_contradictions 목록에서 이번에 결정된 항목만 제거한다 (미결정 항목은 그대로 둔다)
+- 본문의 다른 내용·링크·[[data:]] 참조는 건드리지 않는다
+- content에 페이지 전문을 반환한다
+
+페이지 경로: {path}
+
+결정 목록:
+{decisions}
+
+현재 페이지:
+{content}"""
+
+
+def group_resolutions(source_id: str, contradictions: list[dict],
+                      resolutions: dict[str, str]) -> dict[str, list[dict]]:
+    """모순별 결정(resolutions[cid])을 페이지별 결정 리스트로 묶는다.
+    cid = '{source_id[:8]}-{순번}' 규약 (frontend admin/page.js와 동일)."""
+    by_page: dict[str, list[dict]] = {}
+    for i, c in enumerate(contradictions):
+        action = resolutions.get(f"{source_id[:8]}-{i + 1}")
+        if action:
+            by_page.setdefault(c["page"], []).append({**c, "action": action})
+    return by_page
+
+
+def apply_resolutions(path: str, content: str, decisions: list[dict]) -> str:
+    """모순 결정(keep/replace/both)을 페이지 본문에 반영한 전문을 반환 (승인 시 확정)."""
+    listing = "\n".join(
+        f"- {d['summary']} | 기존: {d['existing']} | 신규: {d['new']} | 결정: {d['action']}"
+        for d in decisions)
+    out = llm.generate("apply_resolution", APPLY_PROMPT.format(
+        path=path, decisions=listing, content=content), schema=APPLY_SCHEMA)
+    return str(out["content"])
+
+
 def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
                       narrative_texts: list[str]) -> dict:
     today = date.today().isoformat()
@@ -267,6 +315,7 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
         merged = llm.generate("merge_page", MERGE_PROMPT.format(
             source_id=source_id, today=today, path=page["path"], title=page["title"],
             current=current, doc_title=meta.get("title", ""), narrative=narrative,
+            publish_date=meta.get("publish_date") or "(미상)",
             link_targets=link_targets, data_targets=DATA_TARGETS,
         ), schema=MERGE_SCHEMA)
         content = merged["content"]

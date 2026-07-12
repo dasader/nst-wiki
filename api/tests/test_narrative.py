@@ -4,6 +4,19 @@ from scripts.init_wiki import init_wiki
 import pipeline.narrative as narrative
 
 
+def test_group_resolutions_maps_cid_to_page():
+    contradictions = [
+        {"page": "tech/a.md", "summary": "s1", "existing": "e1", "new": "n1"},
+        {"page": "tech/a.md", "summary": "s2", "existing": "e2", "new": "n2"},
+        {"page": "tech/b.md", "summary": "s3", "existing": "e3", "new": "n3"},
+    ]
+    resolutions = {"abcd1234-1": "replace", "abcd1234-2": "keep"}  # 3번은 미선택
+    by_page = narrative.group_resolutions("abcd1234ffff", contradictions, resolutions)
+    assert set(by_page) == {"tech/a.md"}                     # b.md는 결정 없어 제외
+    assert [d["action"] for d in by_page["tech/a.md"]] == ["replace", "keep"]
+    assert by_page["tech/a.md"][0]["new"] == "n1"            # 원 모순 필드 보존
+
+
 def _fake_llm(plan_pages, merged, summary="## 개요\n요약 본문"):
     def fake(purpose, contents, schema=None):
         if purpose == "plan_pages":
