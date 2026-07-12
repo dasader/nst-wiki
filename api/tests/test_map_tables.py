@@ -36,7 +36,7 @@ def test_high_confidence_stages_rows(tmp_path, monkeypatch):
     }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [{"table": "technologies", "rows": 2}], "needs_review": 0}
+        assert out == {"staged": [{"table": "technologies", "rows": 2}], "needs_review": 0, "inline_md": []}
         with db.connect() as conn:
             rows = conn.execute(
                 "SELECT name, field FROM staging.technologies WHERE source_id = %s ORDER BY name",
@@ -55,7 +55,7 @@ def test_low_confidence_falls_back(tmp_path, monkeypatch):
     }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [], "needs_review": 1}
+        assert out["staged"] == [] and out["needs_review"] == 1 and len(out["inline_md"]) == 1
         with db.connect() as conn:
             row = conn.execute(
                 "SELECT status, mapping_confidence FROM staging_tables WHERE source_id = %s",
@@ -80,7 +80,7 @@ def test_mismatched_mapping_and_short_rows_do_not_crash(tmp_path, monkeypatch):
     }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [{"table": "technologies", "rows": 1}], "needs_review": 0}
+        assert out == {"staged": [{"table": "technologies", "rows": 1}], "needs_review": 0, "inline_md": []}
     finally:
         _cleanup(source_id)
 
@@ -128,7 +128,7 @@ def test_budget_table_stages_rows(tmp_path, monkeypatch):
     }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [{"table": "budget_history", "rows": 2}], "needs_review": 0}
+        assert out == {"staged": [{"table": "budget_history", "rows": 2}], "needs_review": 0, "inline_md": []}
         with db.connect() as conn:
             rows = conn.execute(
                 "SELECT fiscal_year, amount FROM staging.budget_history "
@@ -215,7 +215,7 @@ def test_batch_llm_failure_sends_all_tables_to_review(tmp_path, monkeypatch):
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("gemini down")))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [], "needs_review": 2}
+        assert out["staged"] == [] and out["needs_review"] == 2 and len(out["inline_md"]) == 2
     finally:
         _cleanup(source_id)
 
@@ -266,7 +266,7 @@ def test_metrics_stages_rows(tmp_path, monkeypatch):
     }))
     try:
         out = mt.map_and_stage_tables(tmp_path, source_id)
-        assert out == {"staged": [{"table": "metrics", "rows": 2}], "needs_review": 0}
+        assert out == {"staged": [{"table": "metrics", "rows": 2}], "needs_review": 0, "inline_md": []}
         with db.connect() as conn:
             rows = conn.execute(
                 "SELECT entity, metric_name, year, value, unit FROM staging.metrics "
@@ -277,3 +277,32 @@ def test_metrics_stages_rows(tmp_path, monkeypatch):
     finally:
         with db.connect() as conn:
             conn.execute("DELETE FROM staging.metrics WHERE source_id = %s", (source_id,))
+
+
+# --- 티어 3 (매핑 실패 표 → md 인라인) ---
+
+def test_table_to_md():
+    md = mt._table_to_md({"table_title": "추진 일정", "columns": ["단계", "시기"],
+                          "rows": [["1단계", "2024"], ["2단계|병행", "2025"]]})
+    assert md.splitlines() == [
+        "**추진 일정**", "",
+        "| 단계 | 시기 |", "| --- | --- |",
+        "| 1단계 | 2024 |", "| 2단계\\|병행 | 2025 |",  # 파이프 이스케이프
+    ]
+    assert mt._table_to_md({"columns": [], "rows": []}) == ""  # 헤더 없으면 빈 문자열
+
+
+def test_unmapped_table_collected_for_inline(tmp_path, monkeypatch):
+    """매핑 실패 표는 staging_tables 보존 + inline_md에 마크다운으로 수집된다 (티어 3)."""
+    source_id = str(uuid.uuid4())
+    _write_table(tmp_path, {"table_title": "비교 매트릭스", "columns": ["항목", "값"],
+                            "rows": [["A", "1"]]})
+    monkeypatch.setattr(mt.llm, "generate", lambda *a, **k: _batch({
+        "table": "none", "confidence": 0.2, "column_mapping": []}))
+    try:
+        out = mt.map_and_stage_tables(tmp_path, source_id)
+        assert out["needs_review"] == 1
+        assert len(out["inline_md"]) == 1
+        assert "비교 매트릭스" in out["inline_md"][0] and "| 항목 | 값 |" in out["inline_md"][0]
+    finally:
+        _cleanup(source_id)

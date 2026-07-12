@@ -198,6 +198,21 @@ def _coerce(col: str, val):
     return canon_field(s) if col == "field" else s
 
 
+def _table_to_md(payload: dict) -> str:
+    """표 payload를 GFM 마크다운 표로. 티어 3: 스키마에 안 맞는 표를 위키에 원형 보존."""
+    cols = [str(c) for c in payload.get("columns", [])]
+    if not cols:
+        return ""
+    esc = lambda v: str(v).replace("|", "\\|").replace("\n", " ").strip()
+    lines = ["| " + " | ".join(esc(c) for c in cols) + " |",
+             "| " + " | ".join("---" for _ in cols) + " |"]
+    for row in payload.get("rows", []):
+        lines.append("| " + " | ".join(
+            esc(row[i]) if i < len(row) else "" for i in range(len(cols))) + " |")
+    title = str(payload.get("table_title", "")).strip()
+    return (f"**{esc(title)}**\n\n" if title else "") + "\n".join(lines)
+
+
 def _stash_for_review(payload: dict, suggestion: dict, confidence: float,
                       source_id: str, result: dict) -> None:
     with db.connect() as conn:
@@ -209,6 +224,9 @@ def _stash_for_review(payload: dict, suggestion: dict, confidence: float,
              json.dumps(suggestion, ensure_ascii=False), confidence),
         )
     result["needs_review"] += 1
+    md = _table_to_md(payload)   # 티어 3: 원본은 staging_tables에, 표시는 위키 요약 페이지에
+    if md:
+        result["inline_md"].append(md)
 
 
 def _melt_metrics(payload: dict, out: dict) -> list[tuple]:
@@ -291,7 +309,7 @@ def _stage_one(payload: dict, out: dict, source_id: str, result: dict) -> None:
 
 def map_and_stage_tables(parsed_dir: Path, source_id: str) -> dict:
     tables_dir = parsed_dir / "tables"
-    result: dict = {"staged": [], "needs_review": 0}
+    result: dict = {"staged": [], "needs_review": 0, "inline_md": []}
     if not tables_dir.is_dir():
         return result
     schema_desc = "\n".join(f"- {t}: {', '.join(cols)}" for t, cols in CORE_TABLES.items())

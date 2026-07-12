@@ -13,10 +13,12 @@ def compile_source(source_dir: Path, source_id: str, wiki_root: Path) -> dict:
     chunks = {c["id"]: c for c in json.loads((parsed / "chunks.json").read_text(encoding="utf-8"))}
     texts = [chunks[i]["text"] for i in cls["narrative_ids"] if i in chunks]
     affected_tables = map_tables.map_and_stage_tables(parsed, source_id)
+    # 티어 3: 매핑 실패 표의 md는 요약 페이지 인라인용 — 태스크 JSONB엔 남기지 않는다(용량)
+    inline_tables = affected_tables.pop("inline_md", [])
     branch = None
     affected_pages, contradictions = [], []
     if texts:
-        nar = narrative.compile_narrative(wiki_root, source_id, meta, texts)
+        nar = narrative.compile_narrative(wiki_root, source_id, meta, texts, inline_tables)
         branch = wiki_ops.stage_changes(
             wiki_root, source_id, nar["files"],
             f"ingest: {meta.get('title', source_id)} (source: {source_id})",
