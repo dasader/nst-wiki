@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { adminFetch } from "./adminAuth";
 import Loading from "../Loading";
+import { colLabel, tableLabel } from "../labels";
 
 // 상태 → 필터 그룹 · 사람 라벨 · 칩 색 (dashboard 구버전과 동일 규약)
 const GROUP = {
@@ -252,7 +253,7 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
 
       {stagedTables.map(([table, rows]) => (
         <div key={table}>
-          <h3 style={{ marginTop: 22 }}>staging.{table} ({rows.length}행)</h3>
+          <h3 style={{ marginTop: 22 }}>{tableLabel(table)} <span className="muted" style={{ fontFamily: "var(--mono)", fontWeight: 400, fontSize: "0.8rem" }}>staging.{table}</span> ({rows.length}행)</h3>
           <StagedTable rows={rows} table={table} exclude={exclude} onToggle={toggleExclude} />
         </div>
       ))}
@@ -287,7 +288,7 @@ function StagedTable({ rows, table, exclude, onToggle }) {
           <thead>
             <tr>
               {canExclude && <th>제외</th>}
-              {cols.map((c) => <th key={c}>{c}</th>)}
+              {cols.map((c) => <th key={c} title={c}>{colLabel(table, c)}</th>)}
             </tr>
           </thead>
           <tbody>

@@ -58,6 +58,7 @@ export const COLUMNS = {
                   "affected_fields", "source_id"],
   ministries: ["id", "name", "abbreviation", "source_id"],
   budget_history: ["id", "project_id", "fiscal_year", "amount", "source_id"],
+  metrics: ["id", "entity", "metric_name", "year", "value", "unit", "source_id"],
   tech_project_mapping: ["technology_id", "project_id", "relevance_score", "mapping_source"],
 };
 
