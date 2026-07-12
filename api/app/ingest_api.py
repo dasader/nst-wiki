@@ -47,16 +47,38 @@ def review(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     pages = task["affected_pages"] or []
+    meta = _source_meta(task["source_id"])
     return {
         "status": task["status"],
         "source_id": task["source_id"],
-        "title": _source_meta(task["source_id"]).get("title") or "",
+        "title": meta.get("title") or "",
+        "publish_date": meta.get("publish_date") or "",  # 모순 카드에서 '신규' 측 시점 표시용
         "wiki_diff": wiki_ops.diff_branch(_wiki_root(), task["source_id"]),
         "staged": db.list_staged(task["source_id"]),
         "affected_pages": pages,
         "suggestions": [p for p in pages if p.get("action") in ("suggested", "rejected")],
         "contradictions": task["contradictions"] or [],
     }
+
+
+def _apply_resolutions(task: dict, resolutions: dict[str, str]) -> None:
+    """모순 결정(keep/replace/both)을 승인된 페이지 본문에 확정 반영한다.
+
+    approve_branch가 log.md에 '해결' 도장을 찍는 것과 별개로, 실제 페이지 본문을 결정대로
+    고치고 unresolved_contradictions 마커를 제거한다. main 병합 이후 페이지당 커밋.
+    """
+    if not resolutions or not task["contradictions"]:
+        return
+    from pipeline.narrative import apply_resolutions, group_resolutions
+
+    root = _wiki_root()
+    for page, decisions in group_resolutions(
+            task["source_id"], task["contradictions"], resolutions).items():
+        current = wiki_ops.read_page(root, page)
+        if current is None:
+            continue  # 삭제·이름변경된 페이지 — 반영 대상 없음
+        wiki_ops.write_page(root, page, apply_resolutions(page, current, decisions),
+                            f"resolve: {page} 모순 반영 ({task['source_id'][:8]})")
 
 
 def _claim(task_id: str, new_status: str) -> dict:
@@ -91,6 +113,7 @@ def approve(task_id: str, body: ApproveBody | None = None):
                 f"approve: {task['source_id']}", resolutions=resolutions or None,
                 resolve_conflict=resolve_page_conflict,
             )
+            _apply_resolutions(task, resolutions)
         pages = [p["path"] for p in (task["affected_pages"] or [])
                  if p.get("action") in ("create", "update")]
         if pages:
@@ -263,13 +286,16 @@ async def ingest(
     title: str = Form(...),
     source_type: str = Form("policy_doc"),
     publisher: str = Form(""),
-    publish_date: str = Form(""),
+    publish_date: str = Form(...),
     tags: str = Form(""),
     force: bool = Form(False),
 ):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail=f"unsupported format: {ext}")
+    if not publish_date.strip():
+        # 시점 정합성(연도 기준 병합·모순 판정)의 전제 — 빈 값 차단
+        raise HTTPException(status_code=400, detail="publish_date(발행 연도)는 필수입니다")
     data = await file.read()
     file_hash = "sha256:" + hashlib.sha256(data).hexdigest()
     if not force:

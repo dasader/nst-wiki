@@ -10,3 +10,10 @@ export function validateFile(file, maxMB = MAX_MB) {
     return `용량 초과: ${(file.size / 1048576).toFixed(1)}MB > ${maxMB}MB`;
   return null;
 }
+
+// 업로드 전 메타 필드 검증. 서버(ingest_api)와 동일하게 publish_date를 의무화한다 —
+// 시점 정합성(연도 기준 병합·모순 판정)의 전제.
+export function validateMeta(item) {
+  if (!String(item?.publish_date || "").trim()) return "발행 연도는 필수입니다";
+  return null;
+}

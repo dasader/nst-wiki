@@ -221,6 +221,7 @@ function ReviewDetail({ taskId, onBack, onChanged }) {
                 <b>{String(c.summary ?? "")}</b> — {String(c.page ?? "")}
                 <p className="muted" style={{ margin: "4px 0 10px", fontSize: "0.85rem" }}>
                   기존: {String(c.existing ?? "")} / 신규: {String(c.new ?? "")}
+                  {" · "}신규 출처: 「{String(r.title || "")}」{r.publish_date ? ` (${r.publish_date})` : " (시점 미상)"}
                 </p>
                 <div className="row">
                   {[["keep", "기존 유지"], ["replace", "신규 채택"], ["both", "병기"]].map(([v, lbl]) => (

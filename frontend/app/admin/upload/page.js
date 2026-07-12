@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { getKey } from "../adminAuth";
-import { MAX_MB, validateFile } from "./validate";
+import { MAX_MB, validateFile, validateMeta } from "./validate";
 
 const baseName = (name) => name.replace(/\.[^.]+$/, "");
 
@@ -62,7 +62,11 @@ export default function UploadPage() {
     if (!getKey()) return alert("관리자 키가 없습니다. 잠금 해제 후 다시 시도하세요.");
     setBusy(true);
     try {
-      for (const item of items.filter((it) => !it.invalid && !it.done)) await uploadOne(item);
+      for (const item of items.filter((it) => !it.invalid && !it.done)) {
+        const problem = validateMeta(item);
+        if (problem) { patch(item.id, { st: `✗ ${problem}`, err: true, ok: false }); continue; }
+        await uploadOne(item);
+      }
     } finally {
       setBusy(false);
     }
@@ -102,7 +106,7 @@ export default function UploadPage() {
             <div className="stack">
               {[
                 ["title", "제목"], ["publisher", "발행기관"],
-                ["tags", "태그(쉼표구분)"], ["publish_date", "발행일 예: 2026"],
+                ["tags", "태그(쉼표구분)"], ["publish_date", "발행 연도(필수) 예: 2026"],
               ].map(([f, ph]) => (
                 <input key={f} placeholder={ph} value={it[f]}
                        onChange={(e) => patch(it.id, { [f]: e.target.value })} />
