@@ -156,12 +156,17 @@ _UPSERT_SQL = {
         FROM staging.budget_history
         WHERE source_id = %s AND fiscal_year IS NOT NULL AND amount IS NOT NULL
     """,
-    # 티어 2 지표: 자연키 없이 단순 INSERT (budget_history와 동일 관례).
-    # 동일 소스 재승인은 상태 가드(409)가 막고, 교차 소스 중복은 (entity,metric,year) 다르면 발생 안 함
+    # 티어 2 지표: (source_id,entity,metric,year) 자연키로 dedup (metrics_dedup 인덱스).
+    # DISTINCT ON으로 staging 내 중복(재승격·표 내 중복 대상)을 접고, ON CONFLICT로 재적재 시
+    # 이중집계 대신 값 갱신. year NULL도 동일 취급(인덱스가 NULLS NOT DISTINCT).
     "metrics": """
         INSERT INTO metrics (entity, metric_name, year, value, unit, source_id)
-        SELECT entity, metric_name, year, value, unit, source_id
+        SELECT DISTINCT ON (entity, metric_name, year)
+               entity, metric_name, year, value, unit, source_id
         FROM staging.metrics WHERE source_id = %s
+        ORDER BY entity, metric_name, year, id DESC
+        ON CONFLICT (source_id, entity, metric_name, year) DO UPDATE SET
+            value = EXCLUDED.value, unit = EXCLUDED.unit
     """,
 }
 
@@ -201,12 +206,15 @@ def stage_metrics_rows(source_id: str, rows: list[tuple]) -> int:
     return len(rows)
 
 
-def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple]) -> int:
-    """melt된 지표 행들을 staging.metrics에 적재하고 원 검토대기 행을 mapped로 처리 (한 트랜잭션).
-    staging.metrics에 넣으므로 소스 승인 시 다른 staging과 함께 canonical로 upsert된다."""
+def promote_staging_metrics(staging_id: int, source_id: str, rows: list[tuple],
+                            mark_mapped: bool = True) -> int:
+    """melt된 지표 행들을 staging.metrics에 적재 (한 트랜잭션). 소스 승인 시 canonical로 upsert된다.
+    mark_mapped=True면 원 검토대기 행을 mapped 처리(연도 wide 경로 — 한 번에 완료).
+    False면 needs_review로 남겨 다른 값 컬럼 재승격을 허용(무연도 경로)."""
     with connect() as conn:
         conn.cursor().executemany(_STAGE_METRICS_SQL, [list(r) + [source_id] for r in rows])
-        conn.execute("UPDATE staging_tables SET status = 'mapped' WHERE id = %s", (staging_id,))
+        if mark_mapped:
+            conn.execute("UPDATE staging_tables SET status = 'mapped' WHERE id = %s", (staging_id,))
     return len(rows)
 
 
