@@ -89,7 +89,7 @@ def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
     embed_calls = []
     monkeypatch.setattr(ingest_api.wiki_ops, "diff_branch", lambda r, s: "diff-텍스트")
     monkeypatch.setattr(ingest_api.wiki_ops, "approve_branch",
-                        lambda r, s, m, resolutions=None: calls.setdefault("approve", resolutions))
+                        lambda r, s, m, resolutions=None, resolve_conflict=None: calls.setdefault("approve", resolutions))
     monkeypatch.setattr(ingest_api.wiki_ops, "reject_branch", lambda r, s: calls.setdefault("reject", s))
     monkeypatch.setattr(ingest_api.db, "upsert_staged", lambda s: {"technologies": 1})
     monkeypatch.setattr(ingest_api.db, "discard_staged", lambda s: None)
@@ -143,7 +143,7 @@ def test_approve_applies_contradiction_resolution_to_page(tmp_path, monkeypatch)
     from app import db as real_db
 
     monkeypatch.setattr(ingest_api.wiki_ops, "approve_branch",
-                        lambda r, s, m, resolutions=None: None)
+                        lambda r, s, m, resolutions=None, resolve_conflict=None: None)
     monkeypatch.setattr(ingest_api.db, "upsert_staged", lambda s: {})
     monkeypatch.setattr(ingest_api.wiki_ops, "read_page", lambda root, p: "기존 본문")
     monkeypatch.setattr(narrative, "apply_resolutions",
