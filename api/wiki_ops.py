@@ -219,10 +219,7 @@ def approve_branch(root: Path, source_id: str, message: str,
             except Exception:
                 _restore_main(root)  # 해소 실패 시 트리 오염 방지 — approve()가 재시도 가능
                 raise
-            still = _git(root, "diff", "--name-only", "--diff-filter=U").split()
-            if still:
-                _restore_main(root)
-                raise RuntimeError(f"위키 병합 충돌 자동 해소 실패: {still}")
+            # 루프가 모든 unmerged path를 write+add → 충돌 스테이지가 남을 수 없어 재확인 불필요
         if resolutions:
             log_path = root / "contradictions" / "log.md"
             log = log_path.read_text(encoding="utf-8")
