@@ -11,7 +11,9 @@ _SCHEMA_LOCK_KEY = 0x6E737477  # 'nstw' — api·worker 동시 기동 시 스키
 
 
 def connect() -> psycopg.Connection:
-    return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+    # connect_timeout: hung/불통 Postgres가 요청 스레드를 무한정 잡지 않게 (health check와 동일 방침).
+    # ponytail: 재시도·풀은 없음 — 필요해지면 psycopg_pool로. 지금은 타임아웃만으로 hang을 막는다.
+    return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row, connect_timeout=10)
 
 
 def apply_schema(schema_dir: Path | None = None) -> list[str]:
