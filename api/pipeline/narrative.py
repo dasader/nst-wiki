@@ -292,42 +292,45 @@ def compile_narrative(wiki_root: Path, source_id: str, meta: dict,
     today = date.today().isoformat()
     narrative = "\n\n".join(narrative_texts)
     existing_pages = wiki_ops.list_pages(wiki_root)
-    existing = "\n".join(existing_pages) or "(없음)"
-    plan = llm.generate("plan_pages", PLAN_PROMPT.format(
-        existing=existing, title=meta.get("title", ""), narrative=narrative,
-    ), schema=PLAN_SCHEMA)
-
-    # 이번 배치에서 실제로 만들어질 페이지 = 링크를 걸어도 되는 대상 (기존 페이지와 합집합)
-    planned = [p["path"] for i, p in enumerate(plan["pages"])
-               if PATH_RE.match(p["path"]) and i < MAX_PAGES]
-    link_targets = "\n".join(sorted({*existing_pages, *planned})) or "(없음)"
-
     files: dict[str, str] = {}
     affected, contradictions = [], []
-    for i, page in enumerate(plan["pages"]):
-        if not PATH_RE.match(page["path"]):
-            affected.append({"path": page["path"], "action": "rejected"})
-            continue
-        if i >= MAX_PAGES:
-            affected.append({"path": page["path"], "action": "suggested"})
-            continue
-        current = wiki_ops.read_page(wiki_root, page["path"]) or ""
-        merged = llm.generate("merge_page", MERGE_PROMPT.format(
-            source_id=source_id, today=today, path=page["path"], title=page["title"],
-            current=current, doc_title=meta.get("title", ""), narrative=narrative,
-            publish_date=meta.get("publish_date") or "(미상)",
-            link_targets=link_targets, data_targets=DATA_TARGETS,
-        ), schema=MERGE_SCHEMA)
-        content = merged["content"]
-        if merged["contradictions"]:
-            content = _inject_contradictions(content, merged["contradictions"])
-        files[page["path"]] = content
-        affected.append({"path": page["path"], "action": page["action"]})
-        for c in merged["contradictions"]:
-            contradictions.append({**c, "page": page["path"]})
+    # 서사 청크가 없는 순수 표 문서: 토픽 페이지·요약 LLM은 넣을 서술이 없어 건너뛰고,
+    # 아래 요약 페이지(부록: 미분류 표)만 만들어 표 보존은 유지한다.
+    if narrative_texts:
+        existing = "\n".join(existing_pages) or "(없음)"
+        plan = llm.generate("plan_pages", PLAN_PROMPT.format(
+            existing=existing, title=meta.get("title", ""), narrative=narrative,
+        ), schema=PLAN_SCHEMA)
+
+        # 이번 배치에서 실제로 만들어질 페이지 = 링크를 걸어도 되는 대상 (기존 페이지와 합집합)
+        planned = [p["path"] for i, p in enumerate(plan["pages"])
+                   if PATH_RE.match(p["path"]) and i < MAX_PAGES]
+        link_targets = "\n".join(sorted({*existing_pages, *planned})) or "(없음)"
+
+        for i, page in enumerate(plan["pages"]):
+            if not PATH_RE.match(page["path"]):
+                affected.append({"path": page["path"], "action": "rejected"})
+                continue
+            if i >= MAX_PAGES:
+                affected.append({"path": page["path"], "action": "suggested"})
+                continue
+            current = wiki_ops.read_page(wiki_root, page["path"]) or ""
+            merged = llm.generate("merge_page", MERGE_PROMPT.format(
+                source_id=source_id, today=today, path=page["path"], title=page["title"],
+                current=current, doc_title=meta.get("title", ""), narrative=narrative,
+                publish_date=meta.get("publish_date") or "(미상)",
+                link_targets=link_targets, data_targets=DATA_TARGETS,
+            ), schema=MERGE_SCHEMA)
+            content = merged["content"]
+            if merged["contradictions"]:
+                content = _inject_contradictions(content, merged["contradictions"])
+            files[page["path"]] = content
+            affected.append({"path": page["path"], "action": page["action"]})
+            for c in merged["contradictions"]:
+                contradictions.append({**c, "page": page["path"]})
 
     title = meta.get("title", source_id)
-    body = _summarize(title, narrative)
+    body = _summarize(title, narrative) if narrative_texts else ""
     if inline_tables:   # 티어 3: 고정 스키마에 안 맞은 표를 원형 그대로 보존 (질의 대상 아님)
         body += ("\n\n## 부록: 미분류 표\n\n"
                  "_아래 표는 고정 스키마에 매핑되지 않아 원형 그대로 보존합니다 "

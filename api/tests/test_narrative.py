@@ -60,6 +60,22 @@ def test_compile_narrative_inlines_unmapped_tables(tmp_path, monkeypatch):
     assert "부록: 미분류 표" not in out2["files"]["summaries/src2.md"]
 
 
+def test_pure_table_doc_still_preserves_tables(tmp_path, monkeypatch):
+    """서사 청크가 없는(순수 표) 문서도 미분류 표는 요약 페이지에 보존된다 — LLM 호출 없이."""
+    init_wiki(tmp_path)
+    # 서사가 없으면 plan_pages·merge_page·summarize를 부르면 안 된다 — 부르면 테스트 실패
+    def _boom(*a, **k):
+        raise AssertionError("서사 없는 문서에서 LLM을 호출하면 안 됨")
+    monkeypatch.setattr(narrative.llm, "generate", _boom)
+    tables = ["**비교표**\n\n| 항목 | 값 |\n| --- | --- |\n| A | 1 |"]
+    out = narrative.compile_narrative(tmp_path, "src9", {"title": "표만 있는 문서"},
+                                      [], inline_tables=tables)
+    summary = out["files"]["summaries/src9.md"]
+    assert "## 부록: 미분류 표" in summary and "| 항목 | 값 |" in summary
+    # 토픽 페이지는 만들어지지 않는다 — 요약 페이지 하나뿐
+    assert list(out["files"].keys()) == ["summaries/src9.md"]
+
+
 def test_compile_narrative_records_contradictions(tmp_path, monkeypatch):
     init_wiki(tmp_path)
     monkeypatch.setattr(narrative.llm, "generate", _fake_llm(

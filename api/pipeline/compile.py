@@ -17,13 +17,15 @@ def compile_source(source_dir: Path, source_id: str, wiki_root: Path) -> dict:
     inline_tables = affected_tables.pop("inline_md", [])
     branch = None
     affected_pages, contradictions = [], []
-    if texts:
+    # 서사가 없어도 미분류 표가 있으면 요약 페이지(부록)를 만들어 표 보존이 소실되지 않게 한다.
+    if texts or inline_tables:
         nar = narrative.compile_narrative(wiki_root, source_id, meta, texts, inline_tables)
         branch = wiki_ops.stage_changes(
             wiki_root, source_id, nar["files"],
             f"ingest: {meta.get('title', source_id)} (source: {source_id})",
         )
         affected_pages, contradictions = nar["affected_pages"], nar["contradictions"]
+    if texts:
         ev = events.extract_and_stage_events(texts, source_id)  # 서사 속 정책 이벤트 → staging
         if ev["staged"]:
             affected_tables["staged"].append({"table": "policy_events", "rows": ev["staged"]})
