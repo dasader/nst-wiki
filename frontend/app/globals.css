@@ -479,9 +479,21 @@ mark { background: #fdf1c4; color: var(--ink); border-radius: 3px; padding: 0 2p
 
 @media (max-width: 640px) {
   main { padding: 22px 16px 48px; }
-  .site-header .inner { padding: 0 16px; }
-  .brand .name small { display: none; }
+  .site-header .inner { padding: 0 12px; gap: 6px; }
+  /* 좁은 폭: 브랜드는 NST 마크만(홈 링크) 남기고, 네비에 자리를 내준다 */
+  .brand .name { display: none; }
+  /* 네비는 min-width:0로 줄어들고 넘치면 가로 스크롤 — 페이지가 넓어지지 않게 */
+  nav.main { margin-left: auto; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  nav.main::-webkit-scrollbar { display: none; }
+  nav.main a { padding: 7px 10px; white-space: nowrap; }
+  /* admin 탭도 넘치면 가로 스크롤 */
+  .admin-tabs { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tabs a { white-space: nowrap; }
   .hero h1 { font-size: 1.6rem; }
   .ask { flex-wrap: wrap; }
   .ask input { min-width: 100%; }
 }
+
+/* keep-all 본문에서 공백 없는 긴 토큰(경로·ID·파일명)이 화면을 넘기지 않게 */
+.muted, .meta, .timeline li, .card b { overflow-wrap: anywhere; }
