@@ -364,7 +364,14 @@ async def ingest(
     db.create_task(task_id, source_id, file_hash)
     from tasks import run_ingest  # celery 브로커 연결은 enqueue 시점에만 필요
 
-    run_ingest.delay(task_id)
+    try:
+        run_ingest.delay(task_id)
+    except Exception as e:
+        # 브로커(Redis) blip으로 enqueue만 실패하면 'queued' 태스크·원본 파일이 고아로 남아
+        # 같은 파일 재업로드가 409로 막힌다. 정리 후 503(재시도 가능)으로 되돌린다.
+        db.delete_task(task_id)
+        shutil.rmtree(src_dir, ignore_errors=True)
+        raise HTTPException(status_code=503, detail=f"작업 큐 연결 실패, 잠시 후 다시 시도하세요: {e}")
     return {"task_id": task_id, "status": "queued"}
 
 

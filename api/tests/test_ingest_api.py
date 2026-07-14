@@ -81,6 +81,28 @@ def test_ingest_happy_path_md(tmp_path, monkeypatch):
     db.delete_task(body["task_id"])
 
 
+def test_ingest_enqueue_failure_cleans_up_and_503(tmp_path, monkeypatch):
+    # 브로커 blip으로 delay가 던지면: 503 반환 + 고아 태스크/파일 없음 (재업로드가 409로 막히지 않게)
+    import tasks as tasks_mod
+
+    def _boom(_tid):
+        raise RuntimeError("broker down")
+
+    monkeypatch.setattr(tasks_mod.run_ingest, "delay", _boom)
+    monkeypatch.setenv("SOURCES_PATH", str(tmp_path))
+    r = client.post(
+        "/api/v1/ingest",
+        headers={"X-Admin-Key": "testkey"},
+        files={"file": ("doc.md", "# 제목\n본문".encode())},
+        data={"title": "큐 실패", "publish_date": "2026"},
+    )
+    assert r.status_code == 503
+    assert list(tmp_path.iterdir()) == []  # 원본 파일 디렉토리 정리됨
+    from app import db
+    file_hash = "sha256:" + __import__("hashlib").sha256("# 제목\n본문".encode()).hexdigest()
+    assert db.find_ingested_by_hash(file_hash) is None  # 고아 태스크 없음 → 재업로드 가능
+
+
 def test_review_and_approve_reject_flow(tmp_path, monkeypatch):
     from app import ingest_api
     import tasks as tasks_mod
