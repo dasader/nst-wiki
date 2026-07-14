@@ -59,6 +59,12 @@ curl http://localhost:8033/api/v1/ingest/<task_id>/status
 이어 Gemini가 내용을 분류·해석하여 서사는 위키 스테이징 브랜치(`ingest/{source_id}`)에,
 표는 PostgreSQL `staging` 스키마에 적재한다 (status: `staged`).
 
+> **소스 요약 파일이 `summaries/<UUID>.md`인 이유**: `source_id`(업로드 시 발급되는 UUID)는
+> git 브랜치·원본 디렉터리·staging FK·모순 로그 ID까지 시스템 전체가 공유하는 안정적 유일
+> 키다. 파일명을 이 UUID로 두면 같은 제목·특수문자 제목이어도 경로가 충돌·파손되지 않는다.
+> 사람이 읽는 제목은 파일 안 `# 제목` 헤딩과 `metadata.json`에 있고, 목록 UI는 거기서
+> title을 끌어와 표시한다.
+
 **승인 대시보드**: http://localhost:8033/ — 문서 업로드(드래그·드롭), staged 태스크의
 위키 diff·staging 데이터·모순 검토, 승인(위키 main 병합 + DB 반영)/거부, 소스 삭제·
 위키 페이지 편집까지 한 화면에서 처리한다. `.env`에 `GEMINI_API_KEY` 필수.
