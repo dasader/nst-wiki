@@ -1,4 +1,4 @@
-.PHONY: up down rebuild deploy logs ps test
+.PHONY: up down rebuild logs ps test
 
 up:            ## 스택 기동 (백그라운드)
 	docker compose up -d
@@ -6,12 +6,9 @@ up:            ## 스택 기동 (백그라운드)
 down:          ## 스택 중지
 	docker compose down
 
-rebuild:       ## 이미지 재빌드 후 재기동 (로컬 변경 반영)
-	docker compose up -d --build
-
-deploy:        ## 최신 코드 pull 후 재빌드·재기동 (프로덕션 반영)
+rebuild:       ## 최신 코드 pull 후 재빌드·재기동
 	git pull
-	$(MAKE) rebuild
+	docker compose up -d --build --force-recreate
 
 logs:          ## 로그 팔로우 (make logs s=api 로 특정 서비스)
 	docker compose logs -f $(s)
